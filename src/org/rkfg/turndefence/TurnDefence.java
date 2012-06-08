@@ -6,7 +6,9 @@ import java.util.Random;
 
 import com.badlogic.gdx.ApplicationListener;
 import com.badlogic.gdx.Gdx;
+import com.badlogic.gdx.InputMultiplexer;
 import com.badlogic.gdx.assets.AssetManager;
+import com.badlogic.gdx.assets.loaders.SkinLoader;
 import com.badlogic.gdx.graphics.Camera;
 import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.GL10;
@@ -15,21 +17,24 @@ import com.badlogic.gdx.graphics.Pixmap.Format;
 import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.graphics.Texture.TextureWrap;
 import com.badlogic.gdx.graphics.g2d.BitmapFont;
-import com.badlogic.gdx.graphics.g2d.NinePatch;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
-import com.badlogic.gdx.graphics.g2d.stbtt.TrueTypeFontFactory;
 import com.badlogic.gdx.math.Vector2;
 import com.badlogic.gdx.math.Vector3;
 import com.badlogic.gdx.scenes.scene2d.Actor;
 import com.badlogic.gdx.scenes.scene2d.Group;
 import com.badlogic.gdx.scenes.scene2d.Stage;
-import com.badlogic.gdx.scenes.scene2d.ui.Button;
+import com.badlogic.gdx.scenes.scene2d.ui.ClickListener;
 import com.badlogic.gdx.scenes.scene2d.ui.Label;
 import com.badlogic.gdx.scenes.scene2d.ui.Label.LabelStyle;
 import com.badlogic.gdx.scenes.scene2d.ui.Skin;
+import com.badlogic.gdx.scenes.scene2d.ui.TextButton;
 import com.badlogic.gdx.utils.Pool;
 
 public class TurnDefence implements ApplicationListener {
+	private static float BFWIDTH = 1024.0f;
+	private static float BFHEIGHT = 1024.0f;
+	private static int AMMOPERTURN = 7;
+
 	private Texture mExplosionTexture;
 	private float screenWidth;
 	private float screenHeight;
@@ -38,23 +43,21 @@ public class TurnDefence implements ApplicationListener {
 	private float mTime = 0.0f;
 	private float mSpawnDelay = 1.0f;
 	private Stage mStage, mUI;
+	private InputMultiplexer mInputMultiplexer;
 	private Group mStaticGroup, mPlatformsGroup, mMonstersGroup, mCannonsGroup;
-	private Label mScoreLabel;
-	private Button mDoTurn;
+	private Label mScoreLabel, mAmmoLabel;
+	private TextButton mDoTurn;
+	private Skin mMainSkin;
 	private int mScore;
-	// private float turnProcess;
+	private float mTurnProcess = 5.0f;
+	private int mPersonalAmmo = AMMOPERTURN;
 	private boolean mGameOver;
 	private Pixmap mHealthPixmap;
 	private Texture mHealthTexture;
 	private AssetManager mAssetManager;
-	private BitmapFont mFont;
 	private List<String> mTextures = Arrays.asList("cannon.png", "edge.png",
 			"explosion.png", "floor.png", "road.png", "soldier.png",
 			"stars.jpg", "button.png");
-
-	private static float BFWIDTH = 1024.0f;
-	private static float BFHEIGHT = 1024.0f;
-	public static final String FONT_CHARACTERS = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789][_!$%#@|\\/?-+=()*&.;:,{}\"´`'<>";
 
 	@Override
 	public void create() {
@@ -65,10 +68,13 @@ public class TurnDefence implements ApplicationListener {
 		for (String asset : mTextures)
 			mAssetManager.load("gfx/" + asset, Texture.class);
 
+		mAssetManager.load("skins/main.skin", Skin.class,
+				new SkinLoader.SkinParameter("gfx/button.png"));
 		mAssetManager.finishLoading();
 		mStage = new Stage(0, 0, true);
 		mUI = new Stage(0, 0, true);
-		Gdx.input.setInputProcessor(mStage);
+		mInputMultiplexer = new InputMultiplexer(mUI, mStage);
+		Gdx.input.setInputProcessor(mInputMultiplexer);
 		mStaticGroup = new Group("static");
 		mPlatformsGroup = new Group("platforms");
 		mMonstersGroup = new Group("monsters");
@@ -78,21 +84,29 @@ public class TurnDefence implements ApplicationListener {
 		mStage.addActor(mCannonsGroup);
 		mStage.addActor(mMonstersGroup);
 		mStaticGroup.addActor(new Background());
-		mFont = TrueTypeFontFactory.createBitmapFont(
-				Gdx.files.internal("fonts/EuroEureka_Regular.ttf"),
-				FONT_CHARACTERS, screenWidth, screenHeight, 20.0f, screenWidth, screenHeight);
-		mFont.setColor(Color.WHITE);
-		mScoreLabel = new Label("Score: 0", new LabelStyle(mFont, Color.YELLOW));
+		mMainSkin = mAssetManager.get("skins/main.skin", Skin.class);
+		mScoreLabel = new Label("Score: " + mScore, mMainSkin);
 		mScoreLabel.x = (screenWidth - mScoreLabel.getPrefWidth()) / 2;
-		mScoreLabel.y = screenHeight - mScoreLabel.getPrefHeight() - 50;
+		mScoreLabel.y = screenHeight - mScoreLabel.getPrefHeight() - 20;
 		mUI.addActor(mScoreLabel);
-		mDoTurn = new Button(new Skin.TintedNinePatch(new NinePatch(
-				mAssetManager.get("gfx/button.png", Texture.class), 28, 28, 9,
-				9), new Color(0.7174f, 0.89019f, 0.11372f, 1.0f)));
-		mDoTurn.x = screenWidth / 2;
+		mAmmoLabel = new Label("Ammo: " + mPersonalAmmo, mMainSkin);
+		mAmmoLabel.x = (screenWidth - mScoreLabel.getPrefWidth()) / 2;
+		mAmmoLabel.y = screenHeight - mScoreLabel.getPrefHeight() - 50;
+		mUI.addActor(mAmmoLabel);
+		mDoTurn = new TextButton("End turn", mMainSkin);
+		mDoTurn.x = (screenWidth - mDoTurn.width) / 2;
 		mDoTurn.y = mDoTurn.height;
-		mDoTurn.width = 128.0f;
-		// mDoTurn.setSkin(new Skin(Gdx.files.internal("skin/button.skin")));
+		mDoTurn.setClickListener(new ClickListener() {
+
+			@Override
+			public void click(Actor actor, float x, float y) {
+				if (mTurnProcess == 0.0f && !mGameOver) {
+					mTurnProcess = 3.0f;
+					mPersonalAmmo = AMMOPERTURN;
+					updateAmmo();
+				}
+			}
+		});
 		mUI.addActor(mDoTurn);
 		player1Platform = new Platform(0, 100, 3, 8, 1);
 		player2Platform = new Platform(screenWidth - 64 * 3, 100, 3, 8, 2);
@@ -122,8 +136,8 @@ public class TurnDefence implements ApplicationListener {
 	public void render() {
 		Gdx.gl.glClear(GL10.GL_COLOR_BUFFER_BIT);
 		mStage.act(Gdx.graphics.getDeltaTime());
-		mStage.draw();
 		mUI.act(Gdx.graphics.getDeltaTime());
+		mStage.draw();
 		mUI.draw();
 	}
 
@@ -148,6 +162,10 @@ public class TurnDefence implements ApplicationListener {
 		mScoreLabel.setText("Score: " + mScore);
 	}
 
+	public void updateAmmo() {
+		mAmmoLabel.setText("Ammo: " + mPersonalAmmo);
+	}
+
 	private class Cannon extends Actor {
 		private Texture mCannonTexture;
 		private float reload;
@@ -162,6 +180,7 @@ public class TurnDefence implements ApplicationListener {
 			this.x = x;
 			this.y = y;
 			this.width = this.height = 64;
+			this.playerNumber = playerNumber;
 		}
 
 		public void setActive(boolean active) {
@@ -187,7 +206,7 @@ public class TurnDefence implements ApplicationListener {
 		@Override
 		public void act(float delta) {
 			super.act(delta);
-			if (!active || mGameOver)
+			if (!active || mGameOver || mTurnProcess == 0.0f)
 				return;
 
 			reload -= delta;
@@ -223,9 +242,9 @@ public class TurnDefence implements ApplicationListener {
 			if (mGameOver)
 				return false;
 
-			if (!active && mScore > 1000) {
+			if (!active && mScore >= 1000) {
 				setActive(true);
-				mScore -= 1000;
+				changeScore(-1000);
 			}
 
 			return true;
@@ -267,10 +286,7 @@ public class TurnDefence implements ApplicationListener {
 
 		@Override
 		public boolean touchDown(float x, float y, int pointer) {
-			if (mGameOver)
-				return false;
-
-			if (mScore < 1000)
+			if (mGameOver || mScore < 1000)
 				return false;
 
 			if (mBuildingCannon == null || mBuildingCannon.isActive()) {
@@ -329,7 +345,7 @@ public class TurnDefence implements ApplicationListener {
 		@Override
 		public void act(float delta) {
 			super.act(delta);
-			if (mGameOver)
+			if (mGameOver || mTurnProcess == 0.0f)
 				return;
 
 			x -= speed * delta;
@@ -340,7 +356,7 @@ public class TurnDefence implements ApplicationListener {
 				if (mScore < 0) {
 					mGameOver = true;
 					Label gameOverLabel = new Label("Game Over. You've lost.",
-							new LabelStyle(mFont, Color.RED));
+							mMainSkin.getStyle("gameover", LabelStyle.class));
 					gameOverLabel.x = (screenWidth - gameOverLabel.width) / 2;
 					gameOverLabel.y = screenHeight / 2;
 					mUI.addActor(gameOverLabel);
@@ -375,6 +391,11 @@ public class TurnDefence implements ApplicationListener {
 		public boolean touchDown(float x, float y, int pointer) {
 			if (mGameOver)
 				return false;
+			if (mPersonalAmmo == 0)
+				return false;
+
+			mPersonalAmmo -= 1;
+			updateAmmo();
 			doDamage(34);
 			return true;
 		}
@@ -478,11 +499,20 @@ public class TurnDefence implements ApplicationListener {
 		@Override
 		public void act(float delta) {
 			super.act(delta);
+			if (mTurnProcess > 0.0f)
+				mTurnProcess -= delta;
+
+			if (mTurnProcess < 0.0f)
+				mTurnProcess = 0.0f;
+
+			if (mTurnProcess == 0.0f)
+				return;
+
 			mTime += delta;
 			while (mTime > mSpawnDelay || mMonstersGroup.getActors().size() < 5) {
 				mTime -= mSpawnDelay;
 				mMonstersGroup.addActor(mMonsterPool.obtain());
-				if (mSpawnDelay > 0.5f)
+				if (mSpawnDelay > 0.1f)
 					mSpawnDelay -= 0.01f;
 			}
 
