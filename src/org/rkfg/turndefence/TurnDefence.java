@@ -16,7 +16,6 @@ import com.badlogic.gdx.graphics.Pixmap;
 import com.badlogic.gdx.graphics.Pixmap.Format;
 import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.graphics.Texture.TextureWrap;
-import com.badlogic.gdx.graphics.g2d.BitmapFont;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.badlogic.gdx.math.Vector2;
 import com.badlogic.gdx.math.Vector3;
@@ -40,7 +39,7 @@ public class TurnDefence implements ApplicationListener {
 	private float screenHeight;
 	private Platform player1Platform, player2Platform;
 	private MonsterPool mMonsterPool;
-	private float mTime = 0.0f;
+	private float mTime = 0.0f, mRuntime = 0.0f;
 	private float mSpawnDelay = 1.0f;
 	private Stage mStage, mUI;
 	private InputMultiplexer mInputMultiplexer;
@@ -56,7 +55,7 @@ public class TurnDefence implements ApplicationListener {
 	private Texture mHealthTexture;
 	private AssetManager mAssetManager;
 	private List<String> mTextures = Arrays.asList("cannon.png", "edge.png",
-			"explosion.png", "floor.png", "road.png", "soldier.png",
+			"explosion.png", "floor.png", "road.png", "reaper.png",
 			"stars.jpg", "button.png");
 
 	@Override
@@ -120,7 +119,7 @@ public class TurnDefence implements ApplicationListener {
 
 		mExplosionTexture = mAssetManager.get("gfx/explosion.png",
 				Texture.class);
-		mMonsterPool = new MonsterPool(mAssetManager.get("gfx/soldier.png",
+		mMonsterPool = new MonsterPool(mAssetManager.get("gfx/reaper.png",
 				Texture.class), 2);
 		for (int i = 0; i < 5; i++) {
 			mMonstersGroup.addActor(mMonsterPool.obtain());
@@ -139,6 +138,7 @@ public class TurnDefence implements ApplicationListener {
 		mUI.act(Gdx.graphics.getDeltaTime());
 		mStage.draw();
 		mUI.draw();
+		mRuntime += Gdx.graphics.getDeltaTime();
 	}
 
 	@Override
@@ -214,14 +214,14 @@ public class TurnDefence implements ApplicationListener {
 				reload = 0.0f;
 
 			if (reload == 0.0f) {
-				prevDistance = 300.0f;
+				prevDistance = screenWidth;
 				damagedActor = null;
 				for (Actor actor : mMonstersGroup.getActors()) {
 					if (((Monster) actor).isEnemyFor(playerNumber)) {
 						distance = Math.sqrt((x - actor.x) * (x - actor.x)
 								+ (y - actor.y) * (y - actor.y));
-						if (distance < 200.0f && distance < prevDistance) {
-							prevDistance = distance;
+						if (distance < 200.0f && actor.x < prevDistance) {
+							prevDistance = actor.x;
 							damagedActor = actor;
 							reload = 1.0f;
 						}
@@ -312,15 +312,18 @@ public class TurnDefence implements ApplicationListener {
 		private float mInvulnerable;
 		private Texture mMonsterTexture;
 		private int playerNumber;
+		private float originY;
 
 		public Monster(Texture texture) {
 			mMonsterTexture = texture;
-			width = height = 64;
+			width = 128;
+			height = 64;
 		}
 
 		public void init(float x, float y, float speed, int playerNumber) {
 			this.x = x;
 			this.y = y;
+			this.originY = y;
 			this.speed = speed;
 			this.life = 100;
 			this.playerNumber = playerNumber;
@@ -345,11 +348,12 @@ public class TurnDefence implements ApplicationListener {
 		@Override
 		public void act(float delta) {
 			super.act(delta);
+			y = (float) (originY + Math.sin(mRuntime + originY) * 3.0f);
 			if (mGameOver || mTurnProcess == 0.0f)
 				return;
 
 			x -= speed * delta;
-			if (x < -64.0f) {
+			if (x < -128.0f) {
 				mMonsterPool.free(this);
 				remove();
 				changeScore(-200);
@@ -512,7 +516,7 @@ public class TurnDefence implements ApplicationListener {
 			while (mTime > mSpawnDelay || mMonstersGroup.getActors().size() < 5) {
 				mTime -= mSpawnDelay;
 				mMonstersGroup.addActor(mMonsterPool.obtain());
-				if (mSpawnDelay > 0.1f)
+				if (mSpawnDelay > 0.4f)
 					mSpawnDelay -= 0.01f;
 			}
 
