@@ -47,16 +47,16 @@ public class TurnDefence implements ApplicationListener {
 	private Label mScoreLabel, mAmmoLabel;
 	private TextButton mDoTurn;
 	private Skin mMainSkin;
-	private int mScore;
+	private int mScore = 2000;
 	private float mTurnProcess = 5.0f;
 	private int mPersonalAmmo = AMMOPERTURN;
 	private boolean mGameOver;
 	private Pixmap mHealthPixmap;
 	private Texture mHealthTexture;
 	private AssetManager mAssetManager;
-	private List<String> mTextures = Arrays.asList("cannon.png", "edge.png",
-			"explosion.png", "floor.png", "road.png", "reaper.png",
-			"stars.jpg", "button.png");
+	private List<String> mTextures = Arrays.asList("cannon2.png", "edge.png",
+			"explosion.png", "floor2.png", "road.png", "reaper_1.png",
+			"reaper_2.png", "reaper_3.png", "stars.jpg", "button.png");
 
 	@Override
 	public void create() {
@@ -85,16 +85,16 @@ public class TurnDefence implements ApplicationListener {
 		mStaticGroup.addActor(new Background());
 		mMainSkin = mAssetManager.get("skins/main.skin", Skin.class);
 		mScoreLabel = new Label("Score: " + mScore, mMainSkin);
-		mScoreLabel.x = (screenWidth - mScoreLabel.getPrefWidth()) / 2;
-		mScoreLabel.y = screenHeight - mScoreLabel.getPrefHeight() - 20;
+		mScoreLabel.x = 10;
+		mScoreLabel.y = screenHeight - mScoreLabel.getPrefHeight();
 		mUI.addActor(mScoreLabel);
 		mAmmoLabel = new Label("Ammo: " + mPersonalAmmo, mMainSkin);
-		mAmmoLabel.x = (screenWidth - mScoreLabel.getPrefWidth()) / 2;
-		mAmmoLabel.y = screenHeight - mScoreLabel.getPrefHeight() - 50;
+		mAmmoLabel.x = screenWidth - mScoreLabel.getPrefWidth() - 10;
+		mAmmoLabel.y = screenHeight - mScoreLabel.getPrefHeight();
 		mUI.addActor(mAmmoLabel);
 		mDoTurn = new TextButton("End turn", mMainSkin);
 		mDoTurn.x = (screenWidth - mDoTurn.width) / 2;
-		mDoTurn.y = mDoTurn.height;
+		mDoTurn.y = 10;
 		mDoTurn.setClickListener(new ClickListener() {
 
 			@Override
@@ -119,8 +119,7 @@ public class TurnDefence implements ApplicationListener {
 
 		mExplosionTexture = mAssetManager.get("gfx/explosion.png",
 				Texture.class);
-		mMonsterPool = new MonsterPool(mAssetManager.get("gfx/reaper.png",
-				Texture.class), 2);
+		mMonsterPool = new MonsterPool(2);
 		for (int i = 0; i < 5; i++) {
 			mMonstersGroup.addActor(mMonsterPool.obtain());
 		}
@@ -176,7 +175,8 @@ public class TurnDefence implements ApplicationListener {
 		private boolean active;
 
 		public Cannon(float x, float y, int playerNumber) {
-			mCannonTexture = mAssetManager.get("gfx/cannon.png", Texture.class);
+			mCannonTexture = mAssetManager
+					.get("gfx/cannon2.png", Texture.class);
 			this.x = x;
 			this.y = y;
 			this.width = this.height = 64;
@@ -267,16 +267,16 @@ public class TurnDefence implements ApplicationListener {
 			mEdgeTexture = mAssetManager.get("gfx/edge.png", Texture.class);
 			mEdgeTexture.setWrap(TextureWrap.Repeat, TextureWrap.Repeat);
 
-			mFloorTexture = mAssetManager.get("gfx/floor.png", Texture.class);
+			mFloorTexture = mAssetManager.get("gfx/floor2.png", Texture.class);
 			mFloorTexture.setWrap(TextureWrap.Repeat, TextureWrap.Repeat);
 		}
 
 		@Override
 		public void draw(SpriteBatch batch, float parentAlpha) {
-			batch.draw(mEdgeTexture, x, y - 64, width, 64.0f, 0, 0, width / 64,
-					1);
-			batch.draw(mFloorTexture, x, y, width, height, 0, 0, width / 64.0f,
-					height / 64.0f);
+			batch.draw(mEdgeTexture, x, y - 64, width, 64.0f, 0, 1, width / 64,
+					0);
+			batch.draw(mFloorTexture, x, y, width, height, 0, height / 64.0f,
+					width / 64.0f, 0);
 		}
 
 		@Override
@@ -410,21 +410,19 @@ public class TurnDefence implements ApplicationListener {
 	}
 
 	private class MonsterPool extends Pool<Monster> {
-
-		private Texture mMonsterTexture;
 		private int playerNumber;
 		Random mRandom;
 
-		public MonsterPool(Texture texture, int playerNumber) {
+		public MonsterPool(int playerNumber) {
 			super();
-			mMonsterTexture = texture;
-			this.playerNumber = playerNumber;
 			mRandom = new Random();
+			this.playerNumber = playerNumber;
 		}
 
 		@Override
 		protected Monster newObject() {
-			Monster monster = new Monster(mMonsterTexture);
+			Monster monster = new Monster(mAssetManager.get("gfx/reaper_"
+					+ (mRandom.nextInt(3) + 1) + ".png", Texture.class));
 			return monster;
 		}
 
