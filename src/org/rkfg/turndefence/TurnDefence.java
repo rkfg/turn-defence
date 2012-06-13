@@ -16,6 +16,7 @@ import com.badlogic.gdx.graphics.Pixmap;
 import com.badlogic.gdx.graphics.Pixmap.Format;
 import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.graphics.Texture.TextureWrap;
+import com.badlogic.gdx.graphics.g2d.BitmapFont;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.badlogic.gdx.math.Vector2;
 import com.badlogic.gdx.math.Vector3;
@@ -27,18 +28,16 @@ import com.badlogic.gdx.scenes.scene2d.ui.Label;
 import com.badlogic.gdx.scenes.scene2d.ui.Label.LabelStyle;
 import com.badlogic.gdx.scenes.scene2d.ui.Skin;
 import com.badlogic.gdx.scenes.scene2d.ui.TextButton;
-import com.badlogic.gdx.utils.Pool;
 
 public class TurnDefence implements ApplicationListener {
-	private static float BFWIDTH = 1024.0f;
-	private static float BFHEIGHT = 1024.0f;
+	private static float BFWIDTH = 2048.0f;
+	private static float BFHEIGHT = 2048.0f;
 	private static int AMMOPERTURN = 7;
 
 	private Texture mExplosionTexture, mCellBg;
 	private float screenWidth;
 	private float screenHeight;
 	private Platform player1Platform, player2Platform;
-	private MonsterPool mMonsterPool;
 	private float mTime = 0.0f, mRuntime = 0.0f;
 	private float mSpawnDelay = 1.0f;
 	private Stage mStage, mUI;
@@ -58,7 +57,7 @@ public class TurnDefence implements ApplicationListener {
 	private AssetManager mAssetManager;
 	private List<String> mTextures = Arrays.asList("cannon2.png", "edge.png",
 			"explosion.png", "floor2.png", "road.png", "ship_1.png",
-			"meteor_1.png", "stars.jpg", "button.png", "beacon_1.png",
+			"meteor_1.png", "stars_1.jpg", "button.png", "beacon_1.png",
 			"menuitembg.png");
 
 	@Override
@@ -116,7 +115,7 @@ public class TurnDefence implements ApplicationListener {
 				mAssetManager.get("gfx/beacon_1.png", Texture.class) },
 				new int[] { 1000, 2000 });
 		player1Platform = new Platform(0, 100, 3, 8, 1);
-		player2Platform = new Platform(screenWidth - 64 * 3, 100, 3, 8, 2);
+		player2Platform = new Platform(BFWIDTH - 64 * 3, 100, 3, 8, 2);
 		mPlatformsGroup.addActor(player1Platform);
 		mPlatformsGroup.addActor(player2Platform);
 
@@ -127,10 +126,6 @@ public class TurnDefence implements ApplicationListener {
 
 		mExplosionTexture = mAssetManager.get("gfx/explosion.png",
 				Texture.class);
-		mMonsterPool = new MonsterPool(2);
-		for (int i = 0; i < 5; i++) {
-			mMonstersGroup.addActor(mMonsterPool.obtain());
-		}
 	}
 
 	@Override
@@ -193,10 +188,6 @@ public class TurnDefence implements ApplicationListener {
 
 		public void setActive(boolean active) {
 			this.active = active;
-		}
-
-		public boolean isActive() {
-			return active;
 		}
 
 		@Override
@@ -348,48 +339,43 @@ public class TurnDefence implements ApplicationListener {
 
 	private class Monster extends Actor {
 		private float speed;
-		private Color mColor;
-		private int life;
+		protected Color mColor;
+		private int life, originLife;
 		private float mInvulnerable;
-		private Texture mMonsterTexture;
+		protected Texture mMonsterTexture;
 		private int playerNumber;
 		private float originY;
-		private boolean mRotating;
+		protected Random mRandom;
 
-		public Monster(Texture texture, boolean rotating) {
+		public Monster(Texture texture, int playerNumber) {
 			mMonsterTexture = texture;
-			mRotating = rotating;
 			width = texture.getWidth();
 			height = texture.getHeight();
+			this.playerNumber = playerNumber;
+			mRandom = new Random();
+			this.mColor = new Color(mRandom.nextFloat(), mRandom.nextFloat(),
+					mRandom.nextFloat(), 1.0f);
 		}
 
-		public void init(float x, float y, float speed, int playerNumber) {
+		protected void init(float x, float y, float speed, int life) {
 			this.x = x;
 			this.y = y;
 			this.originY = y;
 			this.speed = speed;
-			this.life = 100;
-			this.playerNumber = playerNumber;
-			Random random = new Random();
-			this.mColor = new Color(random.nextFloat(), random.nextFloat(),
-					random.nextFloat(), 1.0f);
+			this.life = life;
+			this.originLife = life;
 		}
 
 		@Override
 		public void draw(SpriteBatch batch, float parentAlpha) {
-			batch.setColor(mColor);
-			if (mRotating)
-				batch.draw(mMonsterTexture, x, y, width / 2, height / 2, width,
-						height, 1.0f, 1.0f, mRuntime * 180, 0, 0, (int) width,
-						(int) height, false, false);
-			else
-				batch.draw(mMonsterTexture, x, y);
-			if (life > 50) {
-				batch.setColor((100.0f - life) / 50.0f, 1.0f, 0.0f, 1.0f);
+			if (life > originLife / 2) {
+				batch.setColor((originLife - life) / originLife * 2, 1.0f,
+						0.0f, 1.0f);
 			} else {
-				batch.setColor(1.0f, life / 50.0f, 0.0f, 1.0f);
+				batch.setColor(1.0f, life / originLife * 2, 0.0f, 1.0f);
 			}
-			batch.draw(mHealthTexture, x, y + 70, width * life / 100.0f, 4.0f);
+			batch.draw(mHealthTexture, x, y + 70, width * life / originLife,
+					4.0f);
 			batch.setColor(Color.WHITE);
 		}
 
@@ -402,7 +388,6 @@ public class TurnDefence implements ApplicationListener {
 
 			x -= speed * delta;
 			if (x < -128.0f) {
-				mMonsterPool.free(this);
 				remove();
 				changeScore(-200);
 				if (mScore < 0) {
@@ -429,7 +414,6 @@ public class TurnDefence implements ApplicationListener {
 			getStage().addActor(new Explosion(x, y, 1));
 			if (life <= 0) {
 				changeScore(100);
-				mMonsterPool.free(this);
 				remove();
 			}
 		}
@@ -442,9 +426,9 @@ public class TurnDefence implements ApplicationListener {
 		@Override
 		public boolean touchDown(float x, float y, int pointer) {
 			if (mGameOver)
-				return false;
+				return true;
 			if (mPersonalAmmo == 0)
-				return false;
+				return true;
 
 			mPersonalAmmo -= 1;
 			updateAmmo();
@@ -457,36 +441,23 @@ public class TurnDefence implements ApplicationListener {
 		}
 	}
 
-	private class MonsterPool extends Pool<Monster> {
-		private int playerNumber;
-		Random mRandom;
+	private class Meteor extends Monster {
 
-		public MonsterPool(int playerNumber) {
-			super();
-			mRandom = new Random();
-			this.playerNumber = playerNumber;
+		public Meteor() {
+			super(mAssetManager.get("gfx/meteor_1.png", Texture.class), 2);
+			init(BFWIDTH, mRandom.nextFloat() * (Gdx.graphics.getHeight() - height),
+					mRandom.nextFloat() * 30 + 50, 50);
 		}
 
 		@Override
-		protected Monster newObject() {
-			Monster monster;
-			if (mRandom.nextInt(2) == 0)
-				monster = new Monster(mAssetManager.get("gfx/ship_1.png",
-						Texture.class), false);
-			else
-				monster = new Monster(mAssetManager.get("gfx/meteor_1.png",
-						Texture.class), true);
-			return monster;
+		public void draw(SpriteBatch batch, float parentAlpha) {
+			batch.setColor(mColor);
+			batch.draw(mMonsterTexture, x, y, width / 2, height / 2, width,
+					height, 1.0f, 1.0f, mRuntime * 180, 0, 0, (int) width,
+					(int) height, false, false);
+			super.draw(batch, parentAlpha);
 		}
 
-		@Override
-		public Monster obtain() {
-			Monster monster = super.obtain();
-			monster.init(Gdx.graphics.getWidth(),
-					mRandom.nextInt(Gdx.graphics.getHeight() - 80),
-					mRandom.nextFloat() * 50 + 30, playerNumber);
-			return monster;
-		}
 	}
 
 	private class Explosion extends Actor {
@@ -533,8 +504,9 @@ public class TurnDefence implements ApplicationListener {
 
 		public Background() {
 			super();
-			mBackgroundTexture = mAssetManager.get("gfx/stars.jpg",
+			mBackgroundTexture = mAssetManager.get("gfx/stars_1.jpg",
 					Texture.class);
+			mBackgroundTexture.setWrap(TextureWrap.Repeat, TextureWrap.Repeat);
 			x = 0;
 			y = Gdx.graphics.getHeight() - BFHEIGHT;
 			width = BFWIDTH;
@@ -566,7 +538,7 @@ public class TurnDefence implements ApplicationListener {
 			mTime += delta;
 			while (mTime > mSpawnDelay || mMonstersGroup.getActors().size() < 5) {
 				mTime -= mSpawnDelay;
-				mMonstersGroup.addActor(mMonsterPool.obtain());
+				mMonstersGroup.addActor(new Meteor());
 				if (mSpawnDelay > 0.4f)
 					mSpawnDelay -= 0.01f;
 			}
@@ -660,6 +632,7 @@ public class TurnDefence implements ApplicationListener {
 		private int[] mPrices;
 		private Platform callback;
 		private int mPriceCnt;
+		private BitmapFont mPriceFont;
 
 		public BuildMenu(Stage stage, Texture[] items, int[] prices) {
 			this.mMenuColor = new Color();
@@ -668,6 +641,8 @@ public class TurnDefence implements ApplicationListener {
 			mPrices = prices;
 			this.width = 70.0f * items.length;
 			this.height = 64.0f;
+			this.mPriceFont = mMainSkin.getFont("dejavu");
+			this.mPriceFont.setColor(mMainSkin.getColor("yellow"));
 		}
 
 		public void show(float x, float y, Platform callback) {
@@ -698,6 +673,8 @@ public class TurnDefence implements ApplicationListener {
 				batch.draw(mCellBg, menuX, y);
 				batch.setColor(1.0f, 1.0f, 1.0f, 1.0f);
 				batch.draw(item, menuX, y);
+				mPriceFont.draw(batch, String.valueOf(mPrices[mPriceCnt]),
+						menuX + 5, y + 64);
 				menuX += 70.0f;
 				this.mPriceCnt++;
 			}
