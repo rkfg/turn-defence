@@ -30,41 +30,41 @@ import com.badlogic.gdx.scenes.scene2d.ui.Skin;
 import com.badlogic.gdx.scenes.scene2d.ui.TextButton;
 
 public class TurnDefence implements ApplicationListener {
-	private static float BFWIDTH = 2048.0f;
-	private static float BFHEIGHT = 2048.0f;
-	private static int AMMOPERTURN = 7;
+	private static float BFWIDTH = 2048.0f, BFHEIGHT = 2048.0f,
+			TURNSWITCH = 1.0f;
 
 	private Texture mExplosionTexture, mCellBg;
 	private float screenWidth;
 	private float screenHeight;
 	private Platform player1Platform, player2Platform;
+	private int mTurn;
 	private float mTime = 0.0f, mRuntime = 0.0f;
 	private float mSpawnDelay = 1.0f;
 	private Stage mStage, mUI;
 	private BuildMenu mBuildMenu;
 	private InputMultiplexer mInputMultiplexer;
-	private Group mStaticGroup, mPlatformsGroup, mMonstersGroup,
-			mBuildingsGroup;
-	private Label mScoreLabel, mAmmoLabel;
+	private Group mStaticGroup, mPlatformsGroup, mBuildingsGroup, mMonstersGroup[];
+	private Label mScoreLabel, mPlayerLabel;
 	private TextButton mDoTurn;
 	private Skin mMainSkin;
-	private int mScore = 1000;
-	private float mTurnProcess = 5.0f;
-	private int mPersonalAmmo = AMMOPERTURN;
+	private int[] mScore;
+	private float mTurnProcess, mTurnSwitchProcess;
 	private boolean mGameOver;
 	private Pixmap mHealthPixmap;
 	private Texture mHealthTexture;
 	private AssetManager mAssetManager;
+	private Random mRandom;
 	private List<String> mTextures = Arrays.asList("cannon2.png", "edge.png",
 			"explosion.png", "floor2.png", "road.png", "ship_1.png",
 			"meteor_1.png", "stars_1.jpg", "button.png", "beacon_1.png",
-			"menuitembg.png");
+			"menuitembg.png", "smoke.png");
 
 	@Override
 	public void create() {
 		screenWidth = Gdx.graphics.getWidth();
 		screenHeight = Gdx.graphics.getHeight();
 		mGameOver = false;
+		mRandom = new Random();
 		mAssetManager = new AssetManager();
 		for (String asset : mTextures)
 			mAssetManager.load("gfx/" + asset, Texture.class);
@@ -78,23 +78,30 @@ public class TurnDefence implements ApplicationListener {
 		Gdx.input.setInputProcessor(mInputMultiplexer);
 		mStaticGroup = new Group("static");
 		mPlatformsGroup = new Group("platforms");
-		mMonstersGroup = new Group("monsters");
+		mMonstersGroup = new Group[2];
+		mMonstersGroup[0] = new Group("monsters1");
+		mMonstersGroup[1] = new Group("monsters2");
 		mBuildingsGroup = new Group("cannons");
 		mStage.addActor(mStaticGroup);
 		mStage.addActor(mPlatformsGroup);
 		mStage.addActor(mBuildingsGroup);
-		mStage.addActor(mMonstersGroup);
+		mStage.addActor(mMonstersGroup[0]);
+		mStage.addActor(mMonstersGroup[1]);
 		mCellBg = mAssetManager.get("gfx/menuitembg.png", Texture.class);
 		mStaticGroup.addActor(new Background());
 		mMainSkin = mAssetManager.get("skins/main.skin", Skin.class);
-		mScoreLabel = new Label("Score: " + mScore, mMainSkin);
+		mScore = new int[2];
+		mScore[0] = mScore[1] = 5000;
+		mScoreLabel = new Label("Score: " + mScore[0], mMainSkin);
 		mScoreLabel.x = 10;
 		mScoreLabel.y = screenHeight - mScoreLabel.getPrefHeight();
 		mUI.addActor(mScoreLabel);
-		mAmmoLabel = new Label("Ammo: " + mPersonalAmmo, mMainSkin);
-		mAmmoLabel.x = screenWidth - mScoreLabel.getPrefWidth() - 10;
-		mAmmoLabel.y = screenHeight - mScoreLabel.getPrefHeight();
-		mUI.addActor(mAmmoLabel);
+		mTurn = 0;
+		mTurnProcess = 3.0f;
+		mPlayerLabel = new Label("Player " + (mTurn + 1) + " turn", mMainSkin);
+		mPlayerLabel.x = screenWidth - mPlayerLabel.getTextBounds().width - 10;
+		mPlayerLabel.y = screenHeight - mPlayerLabel.getPrefHeight();
+		mUI.addActor(mPlayerLabel);
 		mDoTurn = new TextButton("End turn", mMainSkin);
 		mDoTurn.x = (screenWidth - mDoTurn.width) / 2;
 		mDoTurn.y = 10;
@@ -104,8 +111,10 @@ public class TurnDefence implements ApplicationListener {
 			public void click(Actor actor, float x, float y) {
 				if (mTurnProcess == 0.0f && !mGameOver) {
 					mTurnProcess = 3.0f;
-					mPersonalAmmo = AMMOPERTURN;
-					updateAmmo();
+					mTurnSwitchProcess = TURNSWITCH;
+					mTurn = 1 - mTurn;
+					mPlayerLabel.setText("Player " + (mTurn + 1) + " turn");
+					mScoreLabel.setText("Score: " + mScore[mTurn]);
 				}
 			}
 		});
@@ -114,8 +123,8 @@ public class TurnDefence implements ApplicationListener {
 				mAssetManager.get("gfx/cannon2.png", Texture.class),
 				mAssetManager.get("gfx/beacon_1.png", Texture.class) },
 				new int[] { 1000, 2000 });
-		player1Platform = new Platform(0, 100, 3, 8, 1);
-		player2Platform = new Platform(BFWIDTH - 64 * 3, 100, 3, 8, 2);
+		player1Platform = new Platform(0, 100, 3, 8, 0);
+		player2Platform = new Platform(BFWIDTH - 64 * 3, 100, 3, 8, 1);
 		mPlatformsGroup.addActor(player1Platform);
 		mPlatformsGroup.addActor(player2Platform);
 
@@ -160,12 +169,8 @@ public class TurnDefence implements ApplicationListener {
 	}
 
 	public void changeScore(int delta) {
-		mScore += delta;
-		mScoreLabel.setText("Score: " + mScore);
-	}
-
-	public void updateAmmo() {
-		mAmmoLabel.setText("Ammo: " + mPersonalAmmo);
+		mScore[mTurn] += delta;
+		mScoreLabel.setText("Score: " + mScore[mTurn]);
 	}
 
 	private class Cannon extends Actor {
@@ -200,12 +205,13 @@ public class TurnDefence implements ApplicationListener {
 			batch.draw(mHealthTexture, x, y + 67.0f, 64.0f * (1.0f - reload),
 					4.0f);
 			batch.setColor(Color.WHITE);
+			//mMainSkin.getFont("dejavu").draw(batch, String.valueOf(x) + ", " + String.valueOf(y), x + 32.0f, y + 32.0f);
 		}
 
 		@Override
 		public void act(float delta) {
 			super.act(delta);
-			if (!active || mGameOver || mTurnProcess == 0.0f)
+			if (!active || mGameOver || mTurnProcess == 0.0f || playerNumber != mTurn)
 				return;
 
 			reload -= delta;
@@ -213,9 +219,9 @@ public class TurnDefence implements ApplicationListener {
 				reload = 0.0f;
 
 			if (reload == 0.0f) {
-				prevDistance = screenWidth;
+				prevDistance = BFWIDTH;
 				damagedActor = null;
-				for (Actor actor : mMonstersGroup.getActors()) {
+				for (Actor actor : mMonstersGroup[1 - mTurn].getActors()) {
 					if (((Monster) actor).isEnemyFor(playerNumber)) {
 						distance = Math.sqrt((x - actor.x) * (x - actor.x)
 								+ (y - actor.y) * (y - actor.y));
@@ -241,7 +247,7 @@ public class TurnDefence implements ApplicationListener {
 			if (mGameOver)
 				return false;
 
-			if (!active && mScore >= 1000) {
+			if (!active && mScore[mTurn] >= 1000) {
 				setActive(true);
 				changeScore(-1000);
 			}
@@ -296,8 +302,9 @@ public class TurnDefence implements ApplicationListener {
 
 		@Override
 		public boolean touchDown(float x, float y, int pointer) {
-			if (mGameOver)
-				return false;
+			if (mGameOver || mTurn != playerNumber)
+				return true;
+
 			if (!mBuildingProcess) {
 				buildVector.set((float) Math.floor(x / 64) * 64,
 						(float) Math.floor(y / 64) * 64);
@@ -316,7 +323,7 @@ public class TurnDefence implements ApplicationListener {
 		public void build(int type) {
 			switch (type) {
 			case 1: // cannon
-				if (mScore >= 1000) {
+				if (mScore[mTurn] >= 1000) {
 					mBuilding = new Cannon(buildVector.x, buildVector.y,
 							playerNumber);
 					((Cannon) mBuilding).setActive(true);
@@ -325,11 +332,11 @@ public class TurnDefence implements ApplicationListener {
 				}
 				break;
 			case 2: // beacon
-				if (mScore >= 1500) {
+				if (mScore[mTurn] >= 2000) {
 					mBuilding = new Beacon(buildVector.x, buildVector.y,
 							playerNumber);
 					mBuildingsGroup.addActor(mBuilding);
-					changeScore(-1500);
+					changeScore(-2000);
 				}
 				break;
 			}
@@ -341,18 +348,15 @@ public class TurnDefence implements ApplicationListener {
 		private float speed;
 		protected Color mColor;
 		private int life, originLife;
-		private float mInvulnerable;
 		protected Texture mMonsterTexture;
-		private int playerNumber;
+		protected int playerNumber;
 		private float originY;
-		protected Random mRandom;
 
 		public Monster(Texture texture, int playerNumber) {
 			mMonsterTexture = texture;
 			width = texture.getWidth();
 			height = texture.getHeight();
 			this.playerNumber = playerNumber;
-			mRandom = new Random();
 			this.mColor = new Color(mRandom.nextFloat(), mRandom.nextFloat(),
 					mRandom.nextFloat(), 1.0f);
 		}
@@ -382,15 +386,18 @@ public class TurnDefence implements ApplicationListener {
 		@Override
 		public void act(float delta) {
 			super.act(delta);
+			if (playerNumber == mTurn)
+				return;
+
 			y = (float) (originY + Math.sin(mRuntime + originY) * 3.0f);
 			if (mGameOver || mTurnProcess == 0.0f)
 				return;
 
 			x -= speed * delta;
-			if (x < -128.0f) {
+			if (x < -128.0f && playerNumber == 1 || x > BFWIDTH + 128 && playerNumber == 0) {
 				remove();
 				changeScore(-200);
-				if (mScore < 0) {
+				if (mScore[mTurn] < 0) {
 					mGameOver = true;
 					Label gameOverLabel = new Label("Game Over. You've lost.",
 							mMainSkin.getStyle("gameover", LabelStyle.class));
@@ -399,16 +406,9 @@ public class TurnDefence implements ApplicationListener {
 					mUI.addActor(gameOverLabel);
 				}
 			}
-			if (mInvulnerable > 0)
-				mInvulnerable -= delta;
-			if (mInvulnerable < 0)
-				mInvulnerable = 0;
 		}
 
 		public void doDamage(int damage) {
-			if (mInvulnerable != 0.0f)
-				return;
-
 			life -= damage;
 			// mInvulnerable += 0.1f;
 			getStage().addActor(new Explosion(x, y, 1));
@@ -423,19 +423,6 @@ public class TurnDefence implements ApplicationListener {
 			return x > 0 && x < width && y > 0 && y < height ? this : null;
 		}
 
-		@Override
-		public boolean touchDown(float x, float y, int pointer) {
-			if (mGameOver)
-				return true;
-			if (mPersonalAmmo == 0)
-				return true;
-
-			mPersonalAmmo -= 1;
-			updateAmmo();
-			doDamage(34);
-			return true;
-		}
-
 		public boolean isEnemyFor(int player) {
 			return this.playerNumber != player;
 		}
@@ -443,10 +430,13 @@ public class TurnDefence implements ApplicationListener {
 
 	private class Meteor extends Monster {
 
-		public Meteor() {
-			super(mAssetManager.get("gfx/meteor_1.png", Texture.class), 2);
-			init(BFWIDTH, mRandom.nextFloat() * (Gdx.graphics.getHeight() - height),
-					mRandom.nextFloat() * 30 + 50, 50);
+		public Meteor(int playerNumber) {
+			super(mAssetManager.get("gfx/meteor_1.png", Texture.class),
+					playerNumber);
+			init(screenWidth,
+					mRandom.nextFloat() * (Gdx.graphics.getHeight() - height),
+					(mRandom.nextFloat() * 30 + 50) * (playerNumber - 0.5f) * 2,
+					50);
 		}
 
 		@Override
@@ -497,25 +487,38 @@ public class TurnDefence implements ApplicationListener {
 	}
 
 	private class Background extends Actor {
-		private Texture mBackgroundTexture;
-		private float deltaX, deltaY, dragX, dragY;
+		private Texture mBackgroundTexture, mSmokeTexture;
+		private float deltaX, deltaY, dragX, dragY, camTargetX, camTargetY,
+				camDeltaX, camDeltaY, interpolatedDelta;
 		private Camera camera;
 		private Vector3 dragVector = new Vector3();
+		private int i;
+		private Vector3[] mSmokeParticles;
 
 		public Background() {
 			super();
 			mBackgroundTexture = mAssetManager.get("gfx/stars_1.jpg",
 					Texture.class);
+			mSmokeTexture = mAssetManager.get("gfx/smoke.png", Texture.class);
 			mBackgroundTexture.setWrap(TextureWrap.Repeat, TextureWrap.Repeat);
 			x = 0;
 			y = Gdx.graphics.getHeight() - BFHEIGHT;
 			width = BFWIDTH;
 			height = BFHEIGHT;
+			mSmokeParticles = new Vector3[(int) BFHEIGHT / 30];
 		}
 
 		@Override
 		public void draw(SpriteBatch batch, float parentAlpha) {
 			batch.draw(mBackgroundTexture, x, y, width, height);
+			for (Vector3 particle : mSmokeParticles) {
+				batch.setColor(1.0f, 1.0f, 1.0f, particle.z);
+				batch.draw(mSmokeTexture, particle.x, particle.y, 32.0f, 32.0f,
+						64.0f, 64.0f, 2.0f - particle.z, 2.0f - particle.z,
+						particle.z * 180 + particle.y, 0, 0, 64, 64, false,
+						false);
+				batch.setColor(1.0f, 1.0f, 1.0f, 1.0f);
+			}
 		}
 
 		@Override
@@ -526,28 +529,74 @@ public class TurnDefence implements ApplicationListener {
 		@Override
 		public void act(float delta) {
 			super.act(delta);
-			if (mTurnProcess > 0.0f)
+			for (i = 0; i < (int) BFHEIGHT / 30; i++) {
+				if (mSmokeParticles[i] == null)
+					mSmokeParticles[i] = new Vector3();
+
+				if (mSmokeParticles[i].z == 0.0f) {
+					mSmokeParticles[i].x = screenWidth + mRandom.nextFloat()
+							* 20.0f - 10.0f - 32.0f;
+					mSmokeParticles[i].y = screenHeight - mRandom.nextFloat()
+							* 20.0f - i * 30 - 40;
+					mSmokeParticles[i].z = mRandom.nextFloat();
+				}
+				mSmokeParticles[i].y += delta * 2;
+				mSmokeParticles[i].z -= delta / 3;
+				if (mSmokeParticles[i].z < 0.0f)
+					mSmokeParticles[i].z = 0.0f;
+			}
+
+			if (mTurnSwitchProcess > 0.0f) { // move
+				// camera
+				if (mTurnSwitchProcess == TURNSWITCH) { // init movement
+					if (mTurn == 0)
+						camTargetX = screenWidth / 2;
+					else
+						camTargetX = BFWIDTH - screenWidth / 2;
+
+					camTargetY = screenHeight / 2;
+					camera = getStage().getCamera();
+					camDeltaX = camTargetX - camera.position.x;
+					camDeltaY = camTargetY - camera.position.y;
+				}
+				// POEHALI
+				if (mTurnSwitchProcess > TURNSWITCH / 2.0f)
+					interpolatedDelta = delta
+							* (TURNSWITCH - mTurnSwitchProcess) / TURNSWITCH
+							* 4.0f;
+				else
+					interpolatedDelta = delta * mTurnSwitchProcess / TURNSWITCH
+							* 4.0f;
+				camera.translate(camDeltaX * interpolatedDelta, camDeltaY
+						* interpolatedDelta, 0);
+				mTurnSwitchProcess -= delta;
+				if (mTurnSwitchProcess < 0.0f) {
+					mTurnSwitchProcess = 0.0f;
+					camera.position.x = camTargetX;
+					camera.position.y = camTargetY;
+				}
+			}
+
+			if (mTurnProcess > 0.0f && mTurnSwitchProcess == 0.0f) { // move
+																		// units
+				mTime += delta;
+				while (mTime > mSpawnDelay
+						|| mMonstersGroup[1 - mTurn].getActors().size() < 5) {
+					mTime -= mSpawnDelay;
+					mMonstersGroup[1 - mTurn].addActor(new Meteor(1 - mTurn));
+					if (mSpawnDelay > 0.4f)
+						mSpawnDelay -= 0.01f;
+				}
 				mTurnProcess -= delta;
-
-			if (mTurnProcess < 0.0f)
-				mTurnProcess = 0.0f;
-
-			if (mTurnProcess == 0.0f)
-				return;
-
-			mTime += delta;
-			while (mTime > mSpawnDelay || mMonstersGroup.getActors().size() < 5) {
-				mTime -= mSpawnDelay;
-				mMonstersGroup.addActor(new Meteor());
-				if (mSpawnDelay > 0.4f)
-					mSpawnDelay -= 0.01f;
+				if (mTurnProcess < 0.0f)
+					mTurnProcess = 0.0f;
 			}
 
 		}
 
 		@Override
 		public boolean touchDown(float x, float y, int pointer) {
-			if (pointer > 0)
+			if (pointer > 0 || mTurnSwitchProcess > 0.0f)
 				return false;
 
 			if (camera == null)
@@ -562,7 +611,7 @@ public class TurnDefence implements ApplicationListener {
 
 		@Override
 		public void touchDragged(float x, float y, int pointer) {
-			if (pointer > 0)
+			if (pointer > 0 || mTurnSwitchProcess > 0.0f)
 				return;
 
 			if (camera == null)
@@ -666,7 +715,7 @@ public class TurnDefence implements ApplicationListener {
 			this.menuX = x;
 			this.mPriceCnt = 0;
 			for (Texture item : mItems) {
-				if (mPrices[mPriceCnt] > mScore)
+				if (mPrices[mPriceCnt] > mScore[mTurn])
 					batch.setColor(1.0f, 0.3f, 0.3f, 0.5f);
 				else
 					batch.setColor(0.3f, 1.0f, 0.3f, 0.5f);
