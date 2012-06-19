@@ -43,10 +43,12 @@ public class TurnDefence implements ApplicationListener {
 	private Stage mStage, mUI;
 	private BuildMenu mBuildMenu;
 	private InputMultiplexer mInputMultiplexer;
-	private Group mStaticGroup, mPlatformsGroup, mBuildingsGroup, mMonstersGroup[];
+	private Group mStaticGroup, mPlatformsGroup, mBuildingsGroup,
+			mUnitsGroup[];
 	private Label mScoreLabel, mPlayerLabel;
 	private TextButton mDoTurn;
 	private Skin mMainSkin;
+	private Actor mSelected;
 	private int[] mScore;
 	private float mTurnProcess, mTurnSwitchProcess;
 	private boolean mGameOver;
@@ -57,7 +59,8 @@ public class TurnDefence implements ApplicationListener {
 	private List<String> mTextures = Arrays.asList("cannon2.png", "edge.png",
 			"explosion.png", "floor2.png", "road.png", "ship_1.png",
 			"meteor_1.png", "stars_1.jpg", "button.png", "beacon_1.png",
-			"menuitembg.png", "smoke.png");
+			"menuitembg.png", "smoke.png", "range_active.png",
+			"range_passive.png");
 
 	@Override
 	public void create() {
@@ -78,15 +81,15 @@ public class TurnDefence implements ApplicationListener {
 		Gdx.input.setInputProcessor(mInputMultiplexer);
 		mStaticGroup = new Group("static");
 		mPlatformsGroup = new Group("platforms");
-		mMonstersGroup = new Group[2];
-		mMonstersGroup[0] = new Group("monsters1");
-		mMonstersGroup[1] = new Group("monsters2");
+		mUnitsGroup = new Group[2];
+		mUnitsGroup[0] = new Group("monsters1");
+		mUnitsGroup[1] = new Group("monsters2");
 		mBuildingsGroup = new Group("cannons");
 		mStage.addActor(mStaticGroup);
 		mStage.addActor(mPlatformsGroup);
 		mStage.addActor(mBuildingsGroup);
-		mStage.addActor(mMonstersGroup[0]);
-		mStage.addActor(mMonstersGroup[1]);
+		mStage.addActor(mUnitsGroup[0]);
+		mStage.addActor(mUnitsGroup[1]);
 		mCellBg = mAssetManager.get("gfx/menuitembg.png", Texture.class);
 		mStaticGroup.addActor(new Background());
 		mMainSkin = mAssetManager.get("skins/main.skin", Skin.class);
@@ -110,6 +113,8 @@ public class TurnDefence implements ApplicationListener {
 			@Override
 			public void click(Actor actor, float x, float y) {
 				if (mTurnProcess == 0.0f && !mGameOver) {
+					mBuildMenu.hide();
+					mSelected = null;
 					mTurnProcess = 3.0f;
 					mTurnSwitchProcess = TURNSWITCH;
 					mTurn = 1 - mTurn;
@@ -173,72 +178,36 @@ public class TurnDefence implements ApplicationListener {
 		mScoreLabel.setText("Score: " + mScore[mTurn]);
 	}
 
-	private class Cannon extends Actor {
-		private Texture mCannonTexture;
-		private float reload;
-		private Actor damagedActor;
-		private double distance;
-		private double prevDistance;
-		private int playerNumber;
-		private boolean active;
+	private class Building extends Actor {
+		protected Texture mBuildingTexture, mSelectedTexturePassive,
+				mSelectedTextureActive;
+		protected int playerNumber;
 
-		public Cannon(float x, float y, int playerNumber) {
-			mCannonTexture = mAssetManager
-					.get("gfx/cannon2.png", Texture.class);
+		public Building(Texture texture, int playerNumber, int price) {
+			mBuildingTexture = texture;
+			this.playerNumber = playerNumber;
+			this.mSelectedTextureActive = mAssetManager.get(
+					"gfx/range_active.png", Texture.class);
+			this.mSelectedTexturePassive = mAssetManager.get(
+					"gfx/range_passive.png", Texture.class);
+			changeScore(-price);
+		}
+
+		public void init(float x, float y) {
 			this.x = x;
 			this.y = y;
 			this.width = this.height = 64;
-			this.playerNumber = playerNumber;
-		}
-
-		public void setActive(boolean active) {
-			this.active = active;
 		}
 
 		@Override
 		public void draw(SpriteBatch batch, float parentAlpha) {
-			if (!active)
-				batch.setColor(1.0f, 1.0f, 1.0f, 0.3f);
+			// TODO Auto-generated method stub
 
-			batch.draw(mCannonTexture, x, y);
-			batch.setColor(0.0f, 0.0f, 1.0f, 0.5f);
-			batch.draw(mHealthTexture, x, y + 67.0f, 64.0f * (1.0f - reload),
-					4.0f);
-			batch.setColor(Color.WHITE);
-			//mMainSkin.getFont("dejavu").draw(batch, String.valueOf(x) + ", " + String.valueOf(y), x + 32.0f, y + 32.0f);
-		}
-
-		@Override
-		public void act(float delta) {
-			super.act(delta);
-			if (!active || mGameOver || mTurnProcess == 0.0f || playerNumber != mTurn)
-				return;
-
-			reload -= delta;
-			if (reload < 0.0f)
-				reload = 0.0f;
-
-			if (reload == 0.0f) {
-				prevDistance = BFWIDTH;
-				damagedActor = null;
-				for (Actor actor : mMonstersGroup[1 - mTurn].getActors()) {
-					if (((Monster) actor).isEnemyFor(playerNumber)) {
-						distance = Math.sqrt((x - actor.x) * (x - actor.x)
-								+ (y - actor.y) * (y - actor.y));
-						if (distance < 200.0f && actor.x < prevDistance) {
-							prevDistance = actor.x;
-							damagedActor = actor;
-							reload = 1.0f;
-						}
-					}
-				}
-				if (damagedActor != null)
-					((Monster) damagedActor).doDamage(30);
-			}
 		}
 
 		@Override
 		public Actor hit(float x, float y) {
+			// TODO Auto-generated method stub
 			return x > 0 && x < width && y > 0 && y < height ? this : null;
 		}
 
@@ -247,12 +216,128 @@ public class TurnDefence implements ApplicationListener {
 			if (mGameOver)
 				return false;
 
-			if (!active && mScore[mTurn] >= 1000) {
-				setActive(true);
-				changeScore(-1000);
-			}
-
+			mSelected = this;
 			return true;
+		}
+	}
+
+	private class BasicCannon extends Building {
+		private float reload;
+		private Actor damagedActor;
+		private double distance;
+		private int prevLife;
+		public static final float range = 200.0f;
+		public static final int price = 1000;
+		private float mRangeScale;
+
+		public BasicCannon(float x, float y, int playerNumber) {
+			super(mAssetManager.get("gfx/cannon2.png", Texture.class),
+					playerNumber, price);
+			init(x, y);
+		}
+
+		@Override
+		public void draw(SpriteBatch batch, float parentAlpha) {
+			if (mSelected == this) {
+				batch.setColor(0.5f, 0.7f, 1.0f, 0.7f);
+				mRangeScale = range / mSelectedTexturePassive.getWidth() * 2;
+				batch.draw(mSelectedTexturePassive, x, y, width / 2.0f,
+						height / 2.0f, width, height, mRangeScale, mRangeScale,
+						0, 0, 0, mSelectedTexturePassive.getWidth(),
+						mSelectedTexturePassive.getHeight(), false, false);
+				batch.setColor(0.5f, 0.7f, 1.0f,
+						1.0f - (float) (mRuntime - Math.floor(mRuntime)) * 0.9f);
+				batch.draw(
+						mSelectedTextureActive,
+						x,
+						y,
+						width / 2.0f,
+						height / 2.0f,
+						width,
+						height,
+						mRangeScale * (float) (mRuntime - Math.floor(mRuntime)),
+						mRangeScale * (float) (mRuntime - Math.floor(mRuntime)),
+						0, 0, 0, mSelectedTexturePassive.getWidth(),
+						mSelectedTexturePassive.getHeight(), false, false);
+				batch.setColor(1.0f, 1.0f, 1.0f, 1.0f);
+			}
+			batch.draw(mBuildingTexture, x, y);
+			batch.setColor(0.0f, 0.0f, 1.0f, 0.5f);
+			batch.draw(mHealthTexture, x, y + 67.0f, 64.0f * (1.0f - reload),
+					4.0f);
+			batch.setColor(Color.WHITE);
+			// mMainSkin.getFont("dejavu").draw(batch, String.valueOf(x) + ", "
+			// + String.valueOf(y), x + 32.0f, y + 32.0f);
+		}
+
+		@Override
+		public void act(float delta) {
+			super.act(delta);
+			if (mGameOver || mTurnProcess == 0.0f || playerNumber != mTurn)
+				return;
+
+			reload -= delta;
+			if (reload < 0.0f)
+				reload = 0.0f;
+
+			if (reload == 0.0f) {
+				prevLife = 999;
+				damagedActor = null;
+				for (Actor actor : mUnitsGroup[1 - mTurn].getActors()) {
+					if (((Unit) actor).isEnemyFor(playerNumber)) {
+						distance = Math.sqrt((x - actor.x) * (x - actor.x)
+								+ (y - actor.y) * (y - actor.y));
+						if (distance < range
+								&& ((Unit) actor).getLife() < prevLife) {
+							prevLife = ((Unit) actor).getLife();
+							damagedActor = actor;
+							reload = 1.0f;
+						}
+					}
+				}
+				if (damagedActor != null)
+					((Unit) damagedActor).doDamage(30);
+			}
+		}
+	}
+
+	private class Beacon extends Building {
+	
+		private Texture mTexture;
+		private int playerNumber;
+		private float mGenTime;
+		public static final int price = 2000;
+	
+		public Beacon(float x, float y, int playerNumber) {
+			super(mAssetManager
+					.get("gfx/beacon_1.png", Texture.class), playerNumber, price);
+			init(x, y);
+			this.mGenTime = 0.0f;
+		}
+	
+		@Override
+		public void draw(SpriteBatch batch, float parentAlpha) {
+			batch.draw(mTexture, x, y + 5, width, height);
+		}
+	
+		@Override
+		public Actor hit(float x, float y) {
+			return x > 0 && x < width && y > 0 && y < height ? this : null;
+		}
+	
+		@Override
+		public void act(float delta) {
+			// Acts at enemy's turn
+			super.act(delta);
+			if (playerNumber == mTurn || mTurnProcess == 0.0f)
+				return;
+	
+			mGenTime += delta;
+			if (mGenTime > 3.0f) {
+				mGenTime -= 3.0f;
+				Ship newShip = new Ship(1 - mTurn);
+				mUnitsGroup[1 - mTurn].addActor(newShip);
+			}
 		}
 	}
 
@@ -305,6 +390,11 @@ public class TurnDefence implements ApplicationListener {
 			if (mGameOver || mTurn != playerNumber)
 				return true;
 
+			if (mSelected != null) {
+				mSelected = null;
+				return true;
+			}
+
 			if (!mBuildingProcess) {
 				buildVector.set((float) Math.floor(x / 64) * 64,
 						(float) Math.floor(y / 64) * 64);
@@ -313,30 +403,29 @@ public class TurnDefence implements ApplicationListener {
 				getStage().getCamera().project(menuVector);
 				mBuildMenu.show(menuVector.x, menuVector.y - 70, this);
 				mBuildingProcess = true;
-			} else {
+			} else
 				mBuildMenu.hide();
-				mBuildingProcess = false;
-			}
 			return true;
 		}
-
+		
+		public void stopBuilding() {
+			mBuildingProcess = false;
+		}
+		
 		public void build(int type) {
 			switch (type) {
 			case 1: // cannon
-				if (mScore[mTurn] >= 1000) {
-					mBuilding = new Cannon(buildVector.x, buildVector.y,
+				if (mScore[mTurn] >= BasicCannon.price) {
+					mBuilding = new BasicCannon(buildVector.x, buildVector.y,
 							playerNumber);
-					((Cannon) mBuilding).setActive(true);
 					mBuildingsGroup.addActor(mBuilding);
-					changeScore(-1000);
 				}
 				break;
 			case 2: // beacon
-				if (mScore[mTurn] >= 2000) {
+				if (mScore[mTurn] >= Beacon.price) {
 					mBuilding = new Beacon(buildVector.x, buildVector.y,
 							playerNumber);
 					mBuildingsGroup.addActor(mBuilding);
-					changeScore(-2000);
 				}
 				break;
 			}
@@ -344,15 +433,88 @@ public class TurnDefence implements ApplicationListener {
 		}
 	}
 
-	private class Monster extends Actor {
+	private class BuildMenu extends Actor {
+		private float menuX;
+		private Stage mStage;
+		private Texture[] mItems;
+		private int[] mPrices;
+		private Platform callback;
+		private int mPriceCnt;
+		private BitmapFont mPriceFont;
+	
+		public BuildMenu(Stage stage, Texture[] items, int[] prices) {
+			this.mStage = stage;
+			mItems = items;
+			mPrices = prices;
+			this.width = 70.0f * items.length;
+			this.height = 64.0f;
+			this.mPriceFont = mMainSkin.getFont("dejavu");
+			this.mPriceFont.setColor(mMainSkin.getColor("yellow"));
+		}
+	
+		public void show(float x, float y, Platform callback) {
+			this.callback = callback;
+			this.x = x - this.width / 2 + 32;
+			if (this.x < 0.0f)
+				this.x = 0.0f;
+			if (y > 0.0f)
+				this.y = y;
+			else
+				this.y = 0;
+			this.mStage.addActor(this);
+		}
+	
+		public void hide() {
+			this.callback.stopBuilding();
+			this.mStage.removeActor(this);
+		}
+	
+		@Override
+		public void draw(SpriteBatch batch, float parentAlpha) {
+			this.menuX = x;
+			this.mPriceCnt = 0;
+			for (Texture item : mItems) {
+				if (mPrices[mPriceCnt] > mScore[mTurn])
+					batch.setColor(1.0f, 0.3f, 0.3f, 0.5f);
+				else
+					batch.setColor(0.3f, 1.0f, 0.3f, 0.5f);
+				batch.draw(mCellBg, menuX, y);
+				batch.setColor(1.0f, 1.0f, 1.0f, 1.0f);
+				batch.draw(item, menuX, y);
+				mPriceFont.draw(batch, String.valueOf(mPrices[mPriceCnt]),
+						menuX + 5, y + 64);
+				menuX += 70.0f;
+				this.mPriceCnt++;
+			}
+		}
+	
+		@Override
+		public Actor hit(float x, float y) {
+			return x > 0 && x < width && y > 0 && y < height ? this : null;
+		}
+	
+		@Override
+		public boolean touchDown(float x, float y, int pointer) {
+			if (pointer > 0)
+				return false;
+	
+			callback.build((int) (x - 10) / 70 + 1);
+			hide();
+			callback = null;
+			return true;
+		}
+	}
+
+	private class Unit extends Actor {
 		private float speed;
 		protected Color mColor;
 		private int life, originLife;
 		protected Texture mMonsterTexture;
 		protected int playerNumber;
 		private float originY;
+		private int mReward;
 
-		public Monster(Texture texture, int playerNumber) {
+		public Unit(Texture texture, int playerNumber) {
 			mMonsterTexture = texture;
 			width = texture.getWidth();
 			height = texture.getHeight();
@@ -361,13 +523,14 @@ public class TurnDefence implements ApplicationListener {
 					mRandom.nextFloat(), 1.0f);
 		}
 
-		protected void init(float x, float y, float speed, int life) {
+		protected void init(float x, float y, float speed, int life, int reward) {
 			this.x = x;
 			this.y = y;
 			this.originY = y;
 			this.speed = speed;
 			this.life = life;
 			this.originLife = life;
+			this.mReward = reward;
 		}
 
 		@Override
@@ -385,6 +548,7 @@ public class TurnDefence implements ApplicationListener {
 
 		@Override
 		public void act(float delta) {
+			// Acts at enemy's turn
 			super.act(delta);
 			if (playerNumber == mTurn)
 				return;
@@ -394,7 +558,8 @@ public class TurnDefence implements ApplicationListener {
 				return;
 
 			x -= speed * delta;
-			if (x < -128.0f && playerNumber == 1 || x > BFWIDTH + 128 && playerNumber == 0) {
+			if (x < -128.0f && playerNumber == 1 || x > BFWIDTH + 128
+					&& playerNumber == 0) {
 				remove();
 				changeScore(-200);
 				if (mScore[mTurn] < 0) {
@@ -413,9 +578,13 @@ public class TurnDefence implements ApplicationListener {
 			// mInvulnerable += 0.1f;
 			getStage().addActor(new Explosion(x, y, 1));
 			if (life <= 0) {
-				changeScore(100);
+				changeScore(mReward);
 				remove();
 			}
+		}
+
+		public int getLife() {
+			return life;
 		}
 
 		@Override
@@ -428,7 +597,7 @@ public class TurnDefence implements ApplicationListener {
 		}
 	}
 
-	private class Meteor extends Monster {
+	private class Meteor extends Unit {
 
 		public Meteor(int playerNumber) {
 			super(mAssetManager.get("gfx/meteor_1.png", Texture.class),
@@ -436,7 +605,7 @@ public class TurnDefence implements ApplicationListener {
 			init(screenWidth,
 					mRandom.nextFloat() * (Gdx.graphics.getHeight() - height),
 					(mRandom.nextFloat() * 30 + 50) * (playerNumber - 0.5f) * 2,
-					50);
+					50, 100);
 		}
 
 		@Override
@@ -448,6 +617,38 @@ public class TurnDefence implements ApplicationListener {
 			super.draw(batch, parentAlpha);
 		}
 
+	}
+
+	private class Ship extends Unit {
+
+		private float mInitX;
+
+		public Ship(int playerNumber) {
+			super(mAssetManager.get("gfx/ship_1.png", Texture.class),
+					playerNumber);
+			switch (playerNumber) {
+			case 0:
+				mInitX = 0 - width;
+				break;
+			case 1:
+				mInitX = BFWIDTH;
+				break;
+			}
+			init(mInitX, mRandom.nextFloat() * (720 - height),
+					(mRandom.nextFloat() * 50 + 100) * (playerNumber - 0.5f)
+							* 2, 100, 250);
+		}
+
+		@Override
+		public void draw(SpriteBatch batch, float parentAlpha) {
+			batch.setColor(mColor);
+			if (playerNumber == 0)
+				batch.draw(mMonsterTexture, x, y, width, height, 0, 0, 128, 64,
+						true, false);
+			else
+				batch.draw(mMonsterTexture, x, y);
+			super.draw(batch, parentAlpha);
+		}
 	}
 
 	private class Explosion extends Actor {
@@ -581,9 +782,9 @@ public class TurnDefence implements ApplicationListener {
 																		// units
 				mTime += delta;
 				while (mTime > mSpawnDelay
-						|| mMonstersGroup[1 - mTurn].getActors().size() < 5) {
+						|| mUnitsGroup[1 - mTurn].getActors().size() < 5) {
 					mTime -= mSpawnDelay;
-					mMonstersGroup[1 - mTurn].addActor(new Meteor(1 - mTurn));
+					mUnitsGroup[1 - mTurn].addActor(new Meteor(1 - mTurn));
 					if (mSpawnDelay > 0.4f)
 						mSpawnDelay -= 0.01f;
 				}
@@ -642,107 +843,6 @@ public class TurnDefence implements ApplicationListener {
 		public void touchUp(float x, float y, int pointer) {
 			deltaX = 0.0f;
 			deltaY = 0.0f;
-		}
-	}
-
-	private class Beacon extends Actor {
-
-		private Texture mTexture;
-		private int playerNumber;
-
-		public Beacon(float x, float y, int playerNumber) {
-			super();
-			this.x = x;
-			this.y = y;
-			this.playerNumber = playerNumber;
-			this.mTexture = mAssetManager
-					.get("gfx/beacon_1.png", Texture.class);
-			this.width = 64;
-			this.height = 64;
-		}
-
-		@Override
-		public void draw(SpriteBatch batch, float parentAlpha) {
-			batch.draw(mTexture, x, y + 5, width, height);
-		}
-
-		@Override
-		public Actor hit(float x, float y) {
-			return x > 0 && x < width && y > 0 && y < height ? this : null;
-		}
-
-	}
-
-	private class BuildMenu extends Actor {
-		private float menuX;
-		private Color mMenuColor;
-		private Stage mStage;
-		private Texture[] mItems;
-		private int[] mPrices;
-		private Platform callback;
-		private int mPriceCnt;
-		private BitmapFont mPriceFont;
-
-		public BuildMenu(Stage stage, Texture[] items, int[] prices) {
-			this.mMenuColor = new Color();
-			this.mStage = stage;
-			mItems = items;
-			mPrices = prices;
-			this.width = 70.0f * items.length;
-			this.height = 64.0f;
-			this.mPriceFont = mMainSkin.getFont("dejavu");
-			this.mPriceFont.setColor(mMainSkin.getColor("yellow"));
-		}
-
-		public void show(float x, float y, Platform callback) {
-			this.callback = callback;
-			this.x = x - this.width / 2 + 32;
-			if (this.x < 0.0f)
-				this.x = 0.0f;
-			if (y > 0.0f)
-				this.y = y;
-			else
-				this.y = 0;
-			this.mStage.addActor(this);
-		}
-
-		public void hide() {
-			this.mStage.removeActor(this);
-		}
-
-		@Override
-		public void draw(SpriteBatch batch, float parentAlpha) {
-			this.menuX = x;
-			this.mPriceCnt = 0;
-			for (Texture item : mItems) {
-				if (mPrices[mPriceCnt] > mScore[mTurn])
-					batch.setColor(1.0f, 0.3f, 0.3f, 0.5f);
-				else
-					batch.setColor(0.3f, 1.0f, 0.3f, 0.5f);
-				batch.draw(mCellBg, menuX, y);
-				batch.setColor(1.0f, 1.0f, 1.0f, 1.0f);
-				batch.draw(item, menuX, y);
-				mPriceFont.draw(batch, String.valueOf(mPrices[mPriceCnt]),
-						menuX + 5, y + 64);
-				menuX += 70.0f;
-				this.mPriceCnt++;
-			}
-		}
-
-		@Override
-		public Actor hit(float x, float y) {
-			return x > 0 && x < width && y > 0 && y < height ? this : null;
-		}
-
-		@Override
-		public boolean touchDown(float x, float y, int pointer) {
-			if (pointer > 0)
-				return false;
-
-			callback.build((int) (x - 10) / 70 + 1);
-			hide();
-			callback = null;
-			return true;
 		}
 	}
 }
