@@ -1,5 +1,7 @@
 package org.rkfg.turndefence;
 
+import java.lang.reflect.Constructor;
+import java.lang.reflect.InvocationTargetException;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Random;
@@ -28,9 +30,10 @@ import com.badlogic.gdx.scenes.scene2d.ui.Label;
 import com.badlogic.gdx.scenes.scene2d.ui.Label.LabelStyle;
 import com.badlogic.gdx.scenes.scene2d.ui.Skin;
 import com.badlogic.gdx.scenes.scene2d.ui.TextButton;
+import com.badlogic.gdx.utils.Array;
 
 public class TurnDefence implements ApplicationListener {
-	private static float BFWIDTH = 2048.0f, BFHEIGHT = 2048.0f,
+	private static float BFWIDTH = 2048.0f, BFHEIGHT = 1024.0f,
 			TURNSWITCH = 1.0f;
 
 	private Texture mExplosionTexture, mCellBg;
@@ -48,7 +51,7 @@ public class TurnDefence implements ApplicationListener {
 	private Label mScoreLabel, mPlayerLabel;
 	private TextButton mDoTurn;
 	private Skin mMainSkin;
-	private Actor mSelected;
+	private Building mSelected;
 	private int[] mScore;
 	private float mTurnProcess, mTurnSwitchProcess;
 	private boolean mGameOver;
@@ -56,11 +59,14 @@ public class TurnDefence implements ApplicationListener {
 	private Texture mHealthTexture;
 	private AssetManager mAssetManager;
 	private Random mRandom;
+	private BitmapFont mSmallFont;
+	private float mDeltaIteration;
+	private Array<BuildingParams> mBuildingParamsList;
 	private List<String> mTextures = Arrays.asList("cannon2.png", "edge.png",
 			"explosion.png", "floor2.png", "road.png", "ship_1.png",
 			"meteor_1.png", "stars_1.jpg", "button.png", "beacon_1.png",
 			"menuitembg.png", "smoke.png", "range_active.png",
-			"range_passive.png");
+			"range_passive.png", "building_ph.png");
 
 	@Override
 	public void create() {
@@ -93,6 +99,15 @@ public class TurnDefence implements ApplicationListener {
 		mCellBg = mAssetManager.get("gfx/menuitembg.png", Texture.class);
 		mStaticGroup.addActor(new Background());
 		mMainSkin = mAssetManager.get("skins/main.skin", Skin.class);
+		mSmallFont = mMainSkin.getFont("dejavu");
+		mSmallFont.setColor(mMainSkin.getColor("yellow"));
+
+		mBuildingParamsList = new Array<TurnDefence.BuildingParams>(true, 10);
+		mBuildingParamsList.add(new BuildingParams(BasicCannon.class,
+				mAssetManager.get("gfx/cannon2.png", Texture.class), 1000, 50));
+		mBuildingParamsList.add(new BuildingParams(Beacon.class, mAssetManager
+				.get("gfx/beacon_1.png", Texture.class), 2000, 200));
+
 		mScore = new int[2];
 		mScore[0] = mScore[1] = 5000;
 		mScoreLabel = new Label("Score: " + mScore[0], mMainSkin);
@@ -114,6 +129,9 @@ public class TurnDefence implements ApplicationListener {
 			public void click(Actor actor, float x, float y) {
 				if (mTurnProcess == 0.0f && !mGameOver) {
 					mBuildMenu.hide();
+					if (mSelected != null && !mSelected.isActive())
+						mSelected.sell(1.0f);
+
 					mSelected = null;
 					mTurnProcess = 3.0f;
 					mTurnSwitchProcess = TURNSWITCH;
@@ -124,10 +142,7 @@ public class TurnDefence implements ApplicationListener {
 			}
 		});
 		mUI.addActor(mDoTurn);
-		mBuildMenu = new BuildMenu(mUI, new Texture[] {
-				mAssetManager.get("gfx/cannon2.png", Texture.class),
-				mAssetManager.get("gfx/beacon_1.png", Texture.class) },
-				new int[] { 1000, 2000 });
+		mBuildMenu = new BuildMenu(mUI);
 		player1Platform = new Platform(0, 100, 3, 8, 0);
 		player2Platform = new Platform(BFWIDTH - 64 * 3, 100, 3, 8, 1);
 		mPlatformsGroup.addActor(player1Platform);
@@ -150,11 +165,18 @@ public class TurnDefence implements ApplicationListener {
 	@Override
 	public void render() {
 		Gdx.gl.glClear(GL10.GL_COLOR_BUFFER_BIT);
-		mStage.act(Gdx.graphics.getDeltaTime());
-		mUI.act(Gdx.graphics.getDeltaTime());
+		mDeltaIteration = Gdx.graphics.getDeltaTime();
+		while (mDeltaIteration > 0.1f) {
+			mStage.act(0.1f);
+			mUI.act(0.1f);
+			mRuntime += 0.1f;
+			mDeltaIteration -= 0.1f;
+		}
+		mStage.act(mDeltaIteration);
+		mUI.act(mDeltaIteration);
 		mStage.draw();
 		mUI.draw();
-		mRuntime += Gdx.graphics.getDeltaTime();
+		mRuntime += mDeltaIteration;
 	}
 
 	@Override
@@ -178,19 +200,47 @@ public class TurnDefence implements ApplicationListener {
 		mScoreLabel.setText("Score: " + mScore[mTurn]);
 	}
 
+	public class BuildingParams {
+		public int mPrice, mUpkeep;
+		public Texture mBuildingTexture;
+		public Class<? extends Building> mClass;
+
+		public BuildingParams(Class<? extends Building> class_,
+				Texture texture, int price, int upkeep) {
+			this.mClass = class_;
+			this.mBuildingTexture = texture;
+			this.mPrice = price;
+			this.mUpkeep = upkeep;
+		}
+	}
+
 	private class Building extends Actor {
 		protected Texture mBuildingTexture, mSelectedTexturePassive,
-				mSelectedTextureActive;
+				mSelectedTextureActive, mPHTexture;
 		protected int playerNumber;
+		private BuildingParams buildingParams;
+		protected boolean mUpkeep, mActive = false;
 
-		public Building(Texture texture, int playerNumber, int price) {
-			mBuildingTexture = texture;
+		public Building(int playerNumber) {
+			buildingParams = getParamsByClass(this.getClass());
+			mBuildingTexture = buildingParams.mBuildingTexture;
 			this.playerNumber = playerNumber;
 			this.mSelectedTextureActive = mAssetManager.get(
 					"gfx/range_active.png", Texture.class);
 			this.mSelectedTexturePassive = mAssetManager.get(
 					"gfx/range_passive.png", Texture.class);
-			changeScore(-price);
+			this.mPHTexture = mAssetManager.get("gfx/building_ph.png",
+					Texture.class);
+			changeScore(-buildingParams.mPrice);
+		}
+
+		protected BuildingParams getParamsByClass(Class<? extends Building> class_) throws NoClassDefFoundError {
+			for (BuildingParams buildingParams : mBuildingParamsList) {
+				if (buildingParams.mClass == class_) {
+					return buildingParams;
+				}
+			}
+			throw new NoClassDefFoundError("Invalid class supplied.");
 		}
 
 		public void init(float x, float y) {
@@ -201,13 +251,30 @@ public class TurnDefence implements ApplicationListener {
 
 		@Override
 		public void draw(SpriteBatch batch, float parentAlpha) {
-			// TODO Auto-generated method stub
+			batch.draw(mPHTexture, x, y);
+			mSmallFont.draw(batch, this.getClass().getSimpleName(), x, y + 20);
+		}
 
+		@Override
+		public void act(float delta) {
+			// TODO Auto-generated method stub
+			super.act(delta);
+			if (mTurn != playerNumber) {
+				mUpkeep = false;
+				return;
+			}
+			if (!mUpkeep && mTurnProcess > 0.0f) {
+				mUpkeep = true;
+				for (BuildingParams buildingParams : mBuildingParamsList) {
+					if (buildingParams.mClass == this.getClass()) {
+						changeScore(-buildingParams.mUpkeep);
+					}
+				}
+			}
 		}
 
 		@Override
 		public Actor hit(float x, float y) {
-			// TODO Auto-generated method stub
 			return x > 0 && x < width && y > 0 && y < height ? this : null;
 		}
 
@@ -216,8 +283,22 @@ public class TurnDefence implements ApplicationListener {
 			if (mGameOver)
 				return false;
 
-			mSelected = this;
+			if (!mActive)
+				mActive = true;
+			else {
+				mSelected = this;
+				mBuildMenu.hide();
+			}
 			return true;
+		}
+
+		public boolean isActive() {
+			return mActive;
+		}
+
+		public void sell(float coeff) {
+			remove();
+			changeScore((int)(getParamsByClass(this.getClass()).mPrice * coeff));
 		}
 	}
 
@@ -225,14 +306,12 @@ public class TurnDefence implements ApplicationListener {
 		private float reload;
 		private Actor damagedActor;
 		private double distance;
-		private int prevLife;
+		private float prevDist;
 		public static final float range = 200.0f;
-		public static final int price = 1000;
 		private float mRangeScale;
 
 		public BasicCannon(float x, float y, int playerNumber) {
-			super(mAssetManager.get("gfx/cannon2.png", Texture.class),
-					playerNumber, price);
+			super(playerNumber);
 			init(x, y);
 		}
 
@@ -261,6 +340,8 @@ public class TurnDefence implements ApplicationListener {
 						mSelectedTexturePassive.getHeight(), false, false);
 				batch.setColor(1.0f, 1.0f, 1.0f, 1.0f);
 			}
+			if (!mActive)
+				batch.setColor(1.0f, 1.0f, 1.0f, 0.5f);
 			batch.draw(mBuildingTexture, x, y);
 			batch.setColor(0.0f, 0.0f, 1.0f, 0.5f);
 			batch.draw(mHealthTexture, x, y + 67.0f, 64.0f * (1.0f - reload),
@@ -272,6 +353,9 @@ public class TurnDefence implements ApplicationListener {
 
 		@Override
 		public void act(float delta) {
+			if (!mActive)
+				return;
+
 			super.act(delta);
 			if (mGameOver || mTurnProcess == 0.0f || playerNumber != mTurn)
 				return;
@@ -281,15 +365,15 @@ public class TurnDefence implements ApplicationListener {
 				reload = 0.0f;
 
 			if (reload == 0.0f) {
-				prevLife = 999;
+				prevDist = 0.0f;
 				damagedActor = null;
 				for (Actor actor : mUnitsGroup[1 - mTurn].getActors()) {
 					if (((Unit) actor).isEnemyFor(playerNumber)) {
 						distance = Math.sqrt((x - actor.x) * (x - actor.x)
 								+ (y - actor.y) * (y - actor.y));
 						if (distance < range
-								&& ((Unit) actor).getLife() < prevLife) {
-							prevLife = ((Unit) actor).getLife();
+								&& Math.abs(actor.x - BFWIDTH / 2) > prevDist) {
+							prevDist = actor.x;
 							damagedActor = actor;
 							reload = 1.0f;
 						}
@@ -302,41 +386,43 @@ public class TurnDefence implements ApplicationListener {
 	}
 
 	private class Beacon extends Building {
-	
-		private Texture mTexture;
+
 		private int playerNumber;
 		private float mGenTime;
-		public static final int price = 2000;
-	
+
 		public Beacon(float x, float y, int playerNumber) {
-			super(mAssetManager
-					.get("gfx/beacon_1.png", Texture.class), playerNumber, price);
+			super(playerNumber);
 			init(x, y);
 			this.mGenTime = 0.0f;
 		}
-	
+
 		@Override
 		public void draw(SpriteBatch batch, float parentAlpha) {
-			batch.draw(mTexture, x, y + 5, width, height);
+			if (!mActive)
+				batch.setColor(1.0f, 1.0f, 1.0f, 0.5f);
+			batch.draw(mBuildingTexture, x, y + 5, width, height);
 		}
-	
+
 		@Override
 		public Actor hit(float x, float y) {
 			return x > 0 && x < width && y > 0 && y < height ? this : null;
 		}
-	
+
 		@Override
 		public void act(float delta) {
 			// Acts at enemy's turn
+			if (!mActive)
+				return;
+
 			super.act(delta);
 			if (playerNumber == mTurn || mTurnProcess == 0.0f)
 				return;
-	
+
 			mGenTime += delta;
 			if (mGenTime > 3.0f) {
 				mGenTime -= 3.0f;
-				Ship newShip = new Ship(1 - mTurn);
-				mUnitsGroup[1 - mTurn].addActor(newShip);
+				Ship newShip = new Ship(mTurn);
+				mUnitsGroup[mTurn].addActor(newShip);
 			}
 		}
 	}
@@ -344,11 +430,13 @@ public class TurnDefence implements ApplicationListener {
 	private class Platform extends Actor {
 		private Texture mEdgeTexture, mFloorTexture;
 		private int playerNumber;
-		private Actor mBuilding = null;
+		private Building mBuilding = null;
 		private boolean mBuildingProcess;
 		private Vector2 buildVector = new Vector2();
 		private Vector3 menuVector = new Vector3();
 		private float mHighlightPhase;
+		private BuildingParams mBuildingParams;
+		private Constructor<?> ctor;
 
 		public Platform(float x, float y, int width, int height,
 				int playerNumber) {
@@ -391,6 +479,9 @@ public class TurnDefence implements ApplicationListener {
 				return true;
 
 			if (mSelected != null) {
+				if (!mSelected.isActive())
+					mSelected.sell(1.0f);
+
 				mSelected = null;
 				return true;
 			}
@@ -407,27 +498,41 @@ public class TurnDefence implements ApplicationListener {
 				mBuildMenu.hide();
 			return true;
 		}
-		
+
 		public void stopBuilding() {
 			mBuildingProcess = false;
 		}
-		
+
 		public void build(int type) {
-			switch (type) {
-			case 1: // cannon
-				if (mScore[mTurn] >= BasicCannon.price) {
-					mBuilding = new BasicCannon(buildVector.x, buildVector.y,
-							playerNumber);
+			mBuildingParams = mBuildingParamsList.get(type);
+			if (mScore[mTurn] >= mBuildingParams.mPrice) {
+				try {
+					ctor = mBuildingParams.mClass.getConstructor(
+							TurnDefence.class, float.class, float.class,
+							int.class);
+					mBuilding = (Building) ctor.newInstance(TurnDefence.this,
+							buildVector.x, buildVector.y, playerNumber);
 					mBuildingsGroup.addActor(mBuilding);
+					mSelected = mBuilding;
+				} catch (SecurityException e) {
+					// TODO Auto-generated catch block
+					e.printStackTrace();
+				} catch (NoSuchMethodException e) {
+					// TODO Auto-generated catch block
+					e.printStackTrace();
+				} catch (IllegalArgumentException e) {
+					// TODO Auto-generated catch block
+					e.printStackTrace();
+				} catch (InstantiationException e) {
+					// TODO Auto-generated catch block
+					e.printStackTrace();
+				} catch (IllegalAccessException e) {
+					// TODO Auto-generated catch block
+					e.printStackTrace();
+				} catch (InvocationTargetException e) {
+					// TODO Auto-generated catch block
+					e.printStackTrace();
 				}
-				break;
-			case 2: // beacon
-				if (mScore[mTurn] >= Beacon.price) {
-					mBuilding = new Beacon(buildVector.x, buildVector.y,
-							playerNumber);
-					mBuildingsGroup.addActor(mBuilding);
-				}
-				break;
 			}
 			mBuildingProcess = false;
 		}
@@ -436,22 +541,14 @@ public class TurnDefence implements ApplicationListener {
 	private class BuildMenu extends Actor {
 		private float menuX;
 		private Stage mStage;
-		private Texture[] mItems;
-		private int[] mPrices;
 		private Platform callback;
-		private int mPriceCnt;
-		private BitmapFont mPriceFont;
-	
-		public BuildMenu(Stage stage, Texture[] items, int[] prices) {
+
+		public BuildMenu(Stage stage) {
 			this.mStage = stage;
-			mItems = items;
-			mPrices = prices;
-			this.width = 70.0f * items.length;
+			this.width = 70.0f * mBuildingParamsList.size;
 			this.height = 64.0f;
-			this.mPriceFont = mMainSkin.getFont("dejavu");
-			this.mPriceFont.setColor(mMainSkin.getColor("yellow"));
 		}
-	
+
 		public void show(float x, float y, Platform callback) {
 			this.callback = callback;
 			this.x = x - this.width / 2 + 32;
@@ -463,42 +560,41 @@ public class TurnDefence implements ApplicationListener {
 				this.y = 0;
 			this.mStage.addActor(this);
 		}
-	
+
 		public void hide() {
-			this.callback.stopBuilding();
+			if (this.callback != null)
+				this.callback.stopBuilding();
 			this.mStage.removeActor(this);
 		}
-	
+
 		@Override
 		public void draw(SpriteBatch batch, float parentAlpha) {
 			this.menuX = x;
-			this.mPriceCnt = 0;
-			for (Texture item : mItems) {
-				if (mPrices[mPriceCnt] > mScore[mTurn])
+			for (BuildingParams buildParams : mBuildingParamsList) {
+				if (buildParams.mPrice > mScore[mTurn])
 					batch.setColor(1.0f, 0.3f, 0.3f, 0.5f);
 				else
 					batch.setColor(0.3f, 1.0f, 0.3f, 0.5f);
 				batch.draw(mCellBg, menuX, y);
 				batch.setColor(1.0f, 1.0f, 1.0f, 1.0f);
-				batch.draw(item, menuX, y);
-				mPriceFont.draw(batch, String.valueOf(mPrices[mPriceCnt]),
+				batch.draw(buildParams.mBuildingTexture, menuX, y);
+				mSmallFont.draw(batch, String.valueOf(buildParams.mPrice),
 						menuX + 5, y + 64);
 				menuX += 70.0f;
-				this.mPriceCnt++;
 			}
 		}
-	
+
 		@Override
 		public Actor hit(float x, float y) {
 			return x > 0 && x < width && y > 0 && y < height ? this : null;
 		}
-	
+
 		@Override
 		public boolean touchDown(float x, float y, int pointer) {
 			if (pointer > 0)
 				return false;
-	
-			callback.build((int) (x - 10) / 70 + 1);
+
+			callback.build((int) (x - 10) / 70);
 			hide();
 			callback = null;
 			return true;
@@ -604,7 +700,7 @@ public class TurnDefence implements ApplicationListener {
 					playerNumber);
 			init(screenWidth,
 					mRandom.nextFloat() * (Gdx.graphics.getHeight() - height),
-					(mRandom.nextFloat() * 30 + 50) * (playerNumber - 0.5f) * 2,
+					(mRandom.nextFloat() * 30 + 100) * (playerNumber - 0.5f) * 2,
 					50, 100);
 		}
 
