@@ -11,6 +11,7 @@ import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.InputMultiplexer;
 import com.badlogic.gdx.assets.AssetManager;
 import com.badlogic.gdx.assets.loaders.SkinLoader;
+import com.badlogic.gdx.files.FileHandle;
 import com.badlogic.gdx.graphics.Camera;
 import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.GL10;
@@ -35,6 +36,7 @@ import com.badlogic.gdx.utils.Array;
 public class TurnDefence implements ApplicationListener {
 	private static float BFWIDTH = 2048.0f, BFHEIGHT = 1024.0f,
 			TURNSWITCH = 1.0f;
+	private static int PLWIDTH = 14, PLHEIGHT = 8;
 
 	private Texture mExplosionTexture, mCellBg;
 	private float screenWidth;
@@ -59,9 +61,10 @@ public class TurnDefence implements ApplicationListener {
 	private Texture mHealthTexture;
 	private AssetManager mAssetManager;
 	private Random mRandom;
-	private BitmapFont mSmallFont;
+	private BitmapFont mPriceFont;
 	private float mDeltaIteration;
 	private Array<BuildingParams> mBuildingParamsList;
+	private MoveMap mMap;
 	private List<String> mTextures = Arrays.asList("cannon2.png", "edge.png",
 			"explosion.png", "floor2.png", "road.png", "ship_1.png",
 			"meteor_1.png", "stars_1.jpg", "button.png", "beacon_1.png",
@@ -88,8 +91,8 @@ public class TurnDefence implements ApplicationListener {
 		mStaticGroup = new Group("static");
 		mPlatformsGroup = new Group("platforms");
 		mUnitsGroup = new Group[2];
-		mUnitsGroup[0] = new Group("monsters1");
-		mUnitsGroup[1] = new Group("monsters2");
+		mUnitsGroup[0] = new Group("units1");
+		mUnitsGroup[1] = new Group("units2");
 		mBuildingsGroup = new Group("cannons");
 		mStage.addActor(mStaticGroup);
 		mStage.addActor(mPlatformsGroup);
@@ -99,9 +102,7 @@ public class TurnDefence implements ApplicationListener {
 		mCellBg = mAssetManager.get("gfx/menuitembg.png", Texture.class);
 		mStaticGroup.addActor(new Background());
 		mMainSkin = mAssetManager.get("skins/main.skin", Skin.class);
-		mSmallFont = mMainSkin.getFont("dejavu");
-		mSmallFont.setColor(mMainSkin.getColor("yellow"));
-
+		mPriceFont = mMainSkin.getFont("dejavu");
 		mBuildingParamsList = new Array<TurnDefence.BuildingParams>(true, 10);
 		mBuildingParamsList.add(new BuildingParams(BasicCannon.class,
 				mAssetManager.get("gfx/cannon2.png", Texture.class), 1000, 50));
@@ -143,8 +144,9 @@ public class TurnDefence implements ApplicationListener {
 		});
 		mUI.addActor(mDoTurn);
 		mBuildMenu = new BuildMenu(mUI);
-		player1Platform = new Platform(0, 100, 3, 8, 0);
-		player2Platform = new Platform(BFWIDTH - 64 * 3, 100, 3, 8, 1);
+		player1Platform = new Platform(0.0f, 64.0f, PLWIDTH, PLHEIGHT, 0);
+		player2Platform = new Platform(BFWIDTH - 64 * PLWIDTH, 64.0f, PLWIDTH,
+				PLHEIGHT, 1);
 		mPlatformsGroup.addActor(player1Platform);
 		mPlatformsGroup.addActor(player2Platform);
 
@@ -155,6 +157,7 @@ public class TurnDefence implements ApplicationListener {
 
 		mExplosionTexture = mAssetManager.get("gfx/explosion.png",
 				Texture.class);
+		mMap = new MoveMap("maps/map_1.txt");
 	}
 
 	@Override
@@ -198,6 +201,14 @@ public class TurnDefence implements ApplicationListener {
 	public void changeScore(int delta) {
 		mScore[mTurn] += delta;
 		mScoreLabel.setText("Score: " + mScore[mTurn]);
+		if (mScore[mTurn] < 0) {
+			mGameOver = true;
+			Label gameOverLabel = new Label("Game Over. You've lost.",
+					mMainSkin.getStyle("gameover", LabelStyle.class));
+			gameOverLabel.x = (screenWidth - gameOverLabel.width) / 2;
+			gameOverLabel.y = screenHeight / 2;
+			mUI.addActor(gameOverLabel);
+		}
 	}
 
 	public class BuildingParams {
@@ -234,7 +245,8 @@ public class TurnDefence implements ApplicationListener {
 			changeScore(-buildingParams.mPrice);
 		}
 
-		protected BuildingParams getParamsByClass(Class<? extends Building> class_) throws NoClassDefFoundError {
+		protected BuildingParams getParamsByClass(
+				Class<? extends Building> class_) throws NoClassDefFoundError {
 			for (BuildingParams buildingParams : mBuildingParamsList) {
 				if (buildingParams.mClass == class_) {
 					return buildingParams;
@@ -252,7 +264,7 @@ public class TurnDefence implements ApplicationListener {
 		@Override
 		public void draw(SpriteBatch batch, float parentAlpha) {
 			batch.draw(mPHTexture, x, y);
-			mSmallFont.draw(batch, this.getClass().getSimpleName(), x, y + 20);
+			mPriceFont.draw(batch, this.getClass().getSimpleName(), x, y + 20);
 		}
 
 		@Override
@@ -286,7 +298,10 @@ public class TurnDefence implements ApplicationListener {
 			if (!mActive)
 				mActive = true;
 			else {
-				mSelected = this;
+				if (mSelected == this)
+					mSelected = null;
+				else
+					mSelected = this;
 				mBuildMenu.hide();
 			}
 			return true;
@@ -298,7 +313,7 @@ public class TurnDefence implements ApplicationListener {
 
 		public void sell(float coeff) {
 			remove();
-			changeScore((int)(getParamsByClass(this.getClass()).mPrice * coeff));
+			changeScore((int) (getParamsByClass(this.getClass()).mPrice * coeff));
 		}
 	}
 
@@ -369,11 +384,13 @@ public class TurnDefence implements ApplicationListener {
 				damagedActor = null;
 				for (Actor actor : mUnitsGroup[1 - mTurn].getActors()) {
 					if (((Unit) actor).isEnemyFor(playerNumber)) {
-						distance = Math.sqrt((x - actor.x) * (x - actor.x)
-								+ (y - actor.y) * (y - actor.y));
+						distance = Math.sqrt((x + width / 2 - actor.x)
+								* (x + width / 2 - actor.x)
+								+ (y + height / 2 - actor.y)
+								* (y + height / 2 - actor.y));
 						if (distance < range
-								&& Math.abs(actor.x - BFWIDTH / 2) > prevDist) {
-							prevDist = actor.x;
+								&& ((Unit) actor).getTotalDistance() > prevDist) {
+							prevDist = ((Unit) actor).getTotalDistance();
 							damagedActor = actor;
 							reload = 1.0f;
 						}
@@ -387,7 +404,6 @@ public class TurnDefence implements ApplicationListener {
 
 	private class Beacon extends Building {
 
-		private int playerNumber;
 		private float mGenTime;
 
 		public Beacon(float x, float y, int playerNumber) {
@@ -421,8 +437,8 @@ public class TurnDefence implements ApplicationListener {
 			mGenTime += delta;
 			if (mGenTime > 3.0f) {
 				mGenTime -= 3.0f;
-				Ship newShip = new Ship(mTurn);
-				mUnitsGroup[mTurn].addActor(newShip);
+				Ship newShip = new Ship(1 - mTurn);
+				mUnitsGroup[1 - mTurn].addActor(newShip);
 			}
 		}
 	}
@@ -479,11 +495,13 @@ public class TurnDefence implements ApplicationListener {
 				return true;
 
 			if (mSelected != null) {
-				if (!mSelected.isActive())
+				if (!mSelected.isActive()) {
 					mSelected.sell(1.0f);
+					mSelected = null;
+					return true;
+				}
 
 				mSelected = null;
-				return true;
 			}
 
 			if (!mBuildingProcess) {
@@ -554,6 +572,8 @@ public class TurnDefence implements ApplicationListener {
 			this.x = x - this.width / 2 + 32;
 			if (this.x < 0.0f)
 				this.x = 0.0f;
+			if (this.x + this.width > Gdx.graphics.getWidth())
+				this.x = Gdx.graphics.getWidth() - this.width;
 			if (y > 0.0f)
 				this.y = y;
 			else
@@ -572,14 +592,18 @@ public class TurnDefence implements ApplicationListener {
 			this.menuX = x;
 			for (BuildingParams buildParams : mBuildingParamsList) {
 				if (buildParams.mPrice > mScore[mTurn])
-					batch.setColor(1.0f, 0.3f, 0.3f, 0.5f);
+					batch.setColor(1.0f, 0.3f, 0.3f, 0.7f);
 				else
-					batch.setColor(0.3f, 1.0f, 0.3f, 0.5f);
+					batch.setColor(0.3f, 1.0f, 0.3f, 0.7f);
 				batch.draw(mCellBg, menuX, y);
 				batch.setColor(1.0f, 1.0f, 1.0f, 1.0f);
 				batch.draw(buildParams.mBuildingTexture, menuX, y);
-				mSmallFont.draw(batch, String.valueOf(buildParams.mPrice),
+				mPriceFont.setColor(mMainSkin.getColor("yellow"));
+				mPriceFont.draw(batch, String.valueOf(buildParams.mPrice),
 						menuX + 5, y + 64);
+				mPriceFont.setColor(mMainSkin.getColor("upkeep_color"));
+				mPriceFont.draw(batch, String.valueOf(buildParams.mUpkeep),
+						menuX + 5, y + 20);
 				menuX += 70.0f;
 			}
 		}
@@ -605,13 +629,14 @@ public class TurnDefence implements ApplicationListener {
 		private float speed;
 		protected Color mColor;
 		private int life, originLife;
-		protected Texture mMonsterTexture;
+		protected Texture mUnitTexture;
 		protected int playerNumber;
-		private float originY;
+		private float originY, totalDistance, moveDelta;
 		private int mReward;
+		private Vector2 nextXY, deltaXY, dist;
 
 		public Unit(Texture texture, int playerNumber) {
-			mMonsterTexture = texture;
+			mUnitTexture = texture;
 			width = texture.getWidth();
 			height = texture.getHeight();
 			this.playerNumber = playerNumber;
@@ -623,10 +648,22 @@ public class TurnDefence implements ApplicationListener {
 			this.x = x;
 			this.y = y;
 			this.originY = y;
+			this.totalDistance = 0.0f;
 			this.speed = speed;
 			this.life = life;
 			this.originLife = life;
 			this.mReward = reward;
+			this.deltaXY = new Vector2();
+			this.nextXY = new Vector2();
+			this.dist = new Vector2();
+			nextPath();
+		}
+
+		protected void nextPath() {
+			nextXY = mMap.getNextXY(this.x, this.y, playerNumber == 0);
+			this.deltaXY.set((nextXY.x - x), (nextXY.y - y));
+			this.dist.set(deltaXY);
+			this.deltaXY.nor();
 		}
 
 		@Override
@@ -637,8 +674,8 @@ public class TurnDefence implements ApplicationListener {
 			} else {
 				batch.setColor(1.0f, life / originLife * 2, 0.0f, 1.0f);
 			}
-			batch.draw(mHealthTexture, x, y + 70, width * life / originLife,
-					4.0f);
+			batch.draw(mHealthTexture, x - width / 2, y + height / 2 + 6, width
+					* life / originLife, 4.0f);
 			batch.setColor(Color.WHITE);
 		}
 
@@ -646,41 +683,52 @@ public class TurnDefence implements ApplicationListener {
 		public void act(float delta) {
 			// Acts at enemy's turn
 			super.act(delta);
+			y = (float) (originY + Math.sin(mRuntime + originY) * 3.0f);
 			if (playerNumber == mTurn)
 				return;
 
-			y = (float) (originY + Math.sin(mRuntime + originY) * 3.0f);
 			if (mGameOver || mTurnProcess == 0.0f)
 				return;
 
-			x -= speed * delta;
+			while (true) {
+				if (delta * speed < dist.len()) {
+					moveDelta = speed * delta;
+					x += deltaXY.x * moveDelta;
+					originY += deltaXY.y * moveDelta;
+					dist.x -= deltaXY.x * moveDelta;
+					dist.y -= deltaXY.y * moveDelta;
+					totalDistance += moveDelta;
+					break;
+				}
+				x += deltaXY.x * dist.len();
+				originY += deltaXY.y * dist.len();
+				x = Math.round(x);
+				originY = Math.round(originY);
+				y = originY;
+				totalDistance += dist.len();
+				nextPath();
+			}
+			y = originY;
 			if (x < -128.0f && playerNumber == 1 || x > BFWIDTH + 128
 					&& playerNumber == 0) {
 				remove();
 				changeScore(-200);
-				if (mScore[mTurn] < 0) {
-					mGameOver = true;
-					Label gameOverLabel = new Label("Game Over. You've lost.",
-							mMainSkin.getStyle("gameover", LabelStyle.class));
-					gameOverLabel.x = (screenWidth - gameOverLabel.width) / 2;
-					gameOverLabel.y = screenHeight / 2;
-					mUI.addActor(gameOverLabel);
-				}
 			}
 		}
 
 		public void doDamage(int damage) {
 			life -= damage;
 			// mInvulnerable += 0.1f;
-			getStage().addActor(new Explosion(x, y, 1));
+			getStage()
+					.addActor(new Explosion(x - width / 2, y - height / 2, 1));
 			if (life <= 0) {
 				changeScore(mReward);
 				remove();
 			}
 		}
 
-		public int getLife() {
-			return life;
+		public float getTotalDistance() {
+			return totalDistance;
 		}
 
 		@Override
@@ -698,18 +746,16 @@ public class TurnDefence implements ApplicationListener {
 		public Meteor(int playerNumber) {
 			super(mAssetManager.get("gfx/meteor_1.png", Texture.class),
 					playerNumber);
-			init(screenWidth,
-					mRandom.nextFloat() * (Gdx.graphics.getHeight() - height),
-					(mRandom.nextFloat() * 30 + 100) * (playerNumber - 0.5f) * 2,
-					50, 100);
+			init(BFWIDTH / 2, mMap.getYbyX(BFWIDTH / 2),
+					mRandom.nextFloat() * 30 + 100, 50, 100);
 		}
 
 		@Override
 		public void draw(SpriteBatch batch, float parentAlpha) {
 			batch.setColor(mColor);
-			batch.draw(mMonsterTexture, x, y, width / 2, height / 2, width,
-					height, 1.0f, 1.0f, mRuntime * 180, 0, 0, (int) width,
-					(int) height, false, false);
+			batch.draw(mUnitTexture, x - width / 2, y - height / 2, width / 2,
+					height / 2, width, height, 1.0f, 1.0f, mRuntime * 180, 0,
+					0, (int) width, (int) height, false, false);
 			super.draw(batch, parentAlpha);
 		}
 
@@ -724,25 +770,24 @@ public class TurnDefence implements ApplicationListener {
 					playerNumber);
 			switch (playerNumber) {
 			case 0:
-				mInitX = 0 - width;
+				mInitX = -128;
 				break;
 			case 1:
-				mInitX = BFWIDTH;
+				mInitX = BFWIDTH + 128;
 				break;
 			}
-			init(mInitX, mRandom.nextFloat() * (720 - height),
-					(mRandom.nextFloat() * 50 + 100) * (playerNumber - 0.5f)
-							* 2, 100, 250);
+			init(mInitX, mMap.getYbyX(mInitX),
+					(mRandom.nextFloat() * 50 + 100), 100, 250);
 		}
 
 		@Override
 		public void draw(SpriteBatch batch, float parentAlpha) {
 			batch.setColor(mColor);
 			if (playerNumber == 0)
-				batch.draw(mMonsterTexture, x, y, width, height, 0, 0, 128, 64,
-						true, false);
+				batch.draw(mUnitTexture, x - width / 2, y - height / 2, width,
+						height, 0, 0, 128, 64, true, false);
 			else
-				batch.draw(mMonsterTexture, x, y);
+				batch.draw(mUnitTexture, x, y);
 			super.draw(batch, parentAlpha);
 		}
 	}
@@ -939,6 +984,78 @@ public class TurnDefence implements ApplicationListener {
 		public void touchUp(float x, float y, int pointer) {
 			deltaX = 0.0f;
 			deltaY = 0.0f;
+		}
+	}
+
+	private class MoveMap {
+		private String mXYString[];
+		private Vector2 mMap[][];
+		private int x, y, x2, y2, cnt;
+		private boolean mMirror;
+		private Array<Vector2> mNextResult;
+		private Array<Float> mYbyXResult;
+		private Vector2 mSelectedResult;
+
+		public MoveMap(String mapname) {
+			FileHandle mFileHandle = Gdx.files.internal(mapname);
+			String mString = mFileHandle.readString();
+			String mLines[] = mString.split("\n");
+			mMap = new Vector2[mLines.length][];
+			cnt = 0;
+			for (String line : mLines) {
+				mXYString = line.split(" ");
+				x = Integer.parseInt(mXYString[0]);
+				y = Integer.parseInt(mXYString[1]);
+				x2 = Integer.parseInt(mXYString[2]);
+				y2 = Integer.parseInt(mXYString[3]);
+				mMap[cnt] = new Vector2[] { new Vector2(x, y),
+						new Vector2(x2, y2) };
+				cnt++;
+			}
+			mNextResult = new Array<Vector2>(5); // path forks
+			mYbyXResult = new Array<Float>(5);
+		}
+
+		public Vector2 getNextXY(float curX, float curY, boolean toRight) {
+			mMirror = curX >= BFWIDTH / 2 && toRight || curX > BFWIDTH / 2
+					&& !toRight; // strong magic
+			if (mMirror)
+				curX = BFWIDTH - curX;
+
+			mNextResult.clear();
+			for (Vector2[] XY : mMap) { // very strong magic
+				if (toRight != mMirror && XY[0].x == curX && XY[0].y == curY)
+					mNextResult.add(new Vector2(XY[1]));
+				if (toRight == mMirror && XY[1].x == curX && XY[1].y == curY)
+					mNextResult.add(new Vector2(XY[0]));
+			}
+			if (mNextResult.size == 0)
+				return new Vector2(toRight ? BFWIDTH * 2 : -BFWIDTH * 2,
+						-BFHEIGHT);
+
+			mSelectedResult = mNextResult.random();
+
+			if (mMirror)
+				mSelectedResult.x = BFWIDTH - mSelectedResult.x;
+
+			return mSelectedResult;
+		}
+
+		public float getYbyX(float x) {
+			mMirror = x > BFWIDTH / 2;
+			if (mMirror)
+				x = BFWIDTH - x;
+			mYbyXResult.clear();
+			for (Vector2[] XY : mMap) { // very strong magic
+				if (XY[0].x == x)
+					mYbyXResult.add(Float.valueOf(XY[0].y));
+				if (XY[1].x == x)
+					mYbyXResult.add(Float.valueOf(XY[1].y));
+			}
+			if (mYbyXResult.size == 0)
+				return 360;
+
+			return mYbyXResult.random();
 		}
 	}
 }
