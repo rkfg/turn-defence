@@ -34,13 +34,14 @@ import com.badlogic.gdx.scenes.scene2d.ui.TextButton;
 import com.badlogic.gdx.utils.Array;
 
 public class TurnDefence implements ApplicationListener {
-	private static float BFWIDTH = 2048.0f, BFHEIGHT = 1024.0f,
+	private static float BFWIDTH = 2048.0f, BFHEIGHT = 720.0f,
 			TURNSWITCH = 1.0f;
 	private static int PLWIDTH = 14, PLHEIGHT = 8;
+	private static float STEP = 64.0f, SCANLINEPERIOD = 4000.0f,
+			SCANLINESLOWNESS = 4.0f;
 
 	private Texture mExplosionTexture, mCellBg;
-	private float screenWidth;
-	private float screenHeight;
+	private float screenWidth, screenHeight;
 	private Platform player1Platform, player2Platform;
 	private int mTurn;
 	private float mTime = 0.0f, mRuntime = 0.0f;
@@ -50,11 +51,11 @@ public class TurnDefence implements ApplicationListener {
 	private InputMultiplexer mInputMultiplexer;
 	private Group mStaticGroup, mPlatformsGroup, mBuildingsGroup,
 			mUnitsGroup[];
-	private Label mScoreLabel, mPlayerLabel;
+	private Label mScoreLabel, mUpkeepLabel, mPlayerLabel;
 	private TextButton mDoTurn;
 	private Skin mMainSkin;
 	private Building mSelected;
-	private int[] mScore;
+	private int mScore[], mPlayerUpkeep;
 	private float mTurnProcess, mTurnSwitchProcess;
 	private boolean mGameOver;
 	private Pixmap mHealthPixmap;
@@ -69,7 +70,7 @@ public class TurnDefence implements ApplicationListener {
 			"explosion.png", "floor2.png", "road.png", "ship_1.png",
 			"meteor_1.png", "stars_1.jpg", "button.png", "beacon_1.png",
 			"menuitembg.png", "smoke.png", "range_active.png",
-			"range_passive.png", "building_ph.png");
+			"range_passive.png", "building_ph.png", "path.png");
 
 	@Override
 	public void create() {
@@ -78,14 +79,19 @@ public class TurnDefence implements ApplicationListener {
 		mGameOver = false;
 		mRandom = new Random();
 		mAssetManager = new AssetManager();
+		mHealthPixmap = new Pixmap(64, 4, Format.RGB565);
+		mHealthPixmap.setColor(Color.WHITE);
+		mHealthPixmap.fill();
+		mHealthTexture = new Texture(mHealthPixmap);
+
 		for (String asset : mTextures)
 			mAssetManager.load("gfx/" + asset, Texture.class);
 
 		mAssetManager.load("skins/main.skin", Skin.class,
 				new SkinLoader.SkinParameter("gfx/button.png"));
 		mAssetManager.finishLoading();
-		mStage = new Stage(0, 0, true);
 		mUI = new Stage(0, 0, true);
+		mStage = new Stage(0, 0, true);
 		mInputMultiplexer = new InputMultiplexer(mUI, mStage);
 		Gdx.input.setInputProcessor(mInputMultiplexer);
 		mStaticGroup = new Group("static");
@@ -107,7 +113,7 @@ public class TurnDefence implements ApplicationListener {
 		mBuildingParamsList.add(new BuildingParams(BasicCannon.class,
 				mAssetManager.get("gfx/cannon2.png", Texture.class), 1000, 50));
 		mBuildingParamsList.add(new BuildingParams(Beacon.class, mAssetManager
-				.get("gfx/beacon_1.png", Texture.class), 2000, 200));
+				.get("gfx/beacon_1.png", Texture.class), 1500, 100));
 
 		mScore = new int[2];
 		mScore[0] = mScore[1] = 5000;
@@ -115,6 +121,10 @@ public class TurnDefence implements ApplicationListener {
 		mScoreLabel.x = 10;
 		mScoreLabel.y = screenHeight - mScoreLabel.getPrefHeight();
 		mUI.addActor(mScoreLabel);
+		mUpkeepLabel = new Label("Upkeep: " + mPlayerUpkeep, mMainSkin);
+		mUpkeepLabel.x = (screenWidth - mUpkeepLabel.getPrefWidth()) / 2;
+		mUpkeepLabel.y = screenHeight - mScoreLabel.getPrefHeight();
+		mUI.addActor(mUpkeepLabel);
 		mTurn = 0;
 		mTurnProcess = 3.0f;
 		mPlayerLabel = new Label("Player " + (mTurn + 1) + " turn", mMainSkin);
@@ -133,12 +143,13 @@ public class TurnDefence implements ApplicationListener {
 					if (mSelected != null && !mSelected.isActive())
 						mSelected.sell(1.0f);
 
+					mPlayerUpkeep = 0;
 					mSelected = null;
 					mTurnProcess = 3.0f;
 					mTurnSwitchProcess = TURNSWITCH;
 					mTurn = 1 - mTurn;
 					mPlayerLabel.setText("Player " + (mTurn + 1) + " turn");
-					mScoreLabel.setText("Score: " + mScore[mTurn]);
+					changeScore(0);
 				}
 			}
 		});
@@ -149,11 +160,6 @@ public class TurnDefence implements ApplicationListener {
 				PLHEIGHT, 1);
 		mPlatformsGroup.addActor(player1Platform);
 		mPlatformsGroup.addActor(player2Platform);
-
-		mHealthPixmap = new Pixmap(64, 4, Format.RGB565);
-		mHealthPixmap.setColor(Color.WHITE);
-		mHealthPixmap.fill();
-		mHealthTexture = new Texture(mHealthPixmap);
 
 		mExplosionTexture = mAssetManager.get("gfx/explosion.png",
 				Texture.class);
@@ -186,6 +192,8 @@ public class TurnDefence implements ApplicationListener {
 	public void resize(int width, int height) {
 		mStage.setViewport(width, height, true);
 		mUI.setViewport(width, height, true);
+		screenWidth = width;
+		screenHeight = height;
 	}
 
 	@Override
@@ -203,12 +211,17 @@ public class TurnDefence implements ApplicationListener {
 		mScoreLabel.setText("Score: " + mScore[mTurn]);
 		if (mScore[mTurn] < 0) {
 			mGameOver = true;
-			Label gameOverLabel = new Label("Game Over. You've lost.",
-					mMainSkin.getStyle("gameover", LabelStyle.class));
+			Label gameOverLabel = new Label("Game over. Player " + (2 - mTurn)
+					+ " won.", mMainSkin.getStyle("gameover", LabelStyle.class));
 			gameOverLabel.x = (screenWidth - gameOverLabel.width) / 2;
 			gameOverLabel.y = screenHeight / 2;
 			mUI.addActor(gameOverLabel);
 		}
+	}
+
+	public void changeUpkeep(int delta) {
+		mPlayerUpkeep += delta;
+		mUpkeepLabel.setText("Upkeep: " + mPlayerUpkeep);
 	}
 
 	public class BuildingParams {
@@ -243,16 +256,18 @@ public class TurnDefence implements ApplicationListener {
 			this.mPHTexture = mAssetManager.get("gfx/building_ph.png",
 					Texture.class);
 			changeScore(-buildingParams.mPrice);
+			changeUpkeep(buildingParams.mUpkeep);
 		}
 
 		protected BuildingParams getParamsByClass(
-				Class<? extends Building> class_) throws NoClassDefFoundError {
+				Class<? extends Building> class_) {
 			for (BuildingParams buildingParams : mBuildingParamsList) {
 				if (buildingParams.mClass == class_) {
 					return buildingParams;
 				}
 			}
-			throw new NoClassDefFoundError("Invalid class supplied.");
+			return new BuildingParams(Building.class, mPHTexture, 0, 0);
+			// throw new Exception("Invalid class supplied.");
 		}
 
 		public void init(float x, float y) {
@@ -264,12 +279,11 @@ public class TurnDefence implements ApplicationListener {
 		@Override
 		public void draw(SpriteBatch batch, float parentAlpha) {
 			batch.draw(mPHTexture, x, y);
-			mPriceFont.draw(batch, this.getClass().getSimpleName(), x, y + 20);
+			mPriceFont.draw(batch, this.getClass().getName(), x, y + 20);
 		}
 
 		@Override
 		public void act(float delta) {
-			// TODO Auto-generated method stub
 			super.act(delta);
 			if (mTurn != playerNumber) {
 				mUpkeep = false;
@@ -280,6 +294,7 @@ public class TurnDefence implements ApplicationListener {
 				for (BuildingParams buildingParams : mBuildingParamsList) {
 					if (buildingParams.mClass == this.getClass()) {
 						changeScore(-buildingParams.mUpkeep);
+						changeUpkeep(buildingParams.mUpkeep);
 					}
 				}
 			}
@@ -314,6 +329,7 @@ public class TurnDefence implements ApplicationListener {
 		public void sell(float coeff) {
 			remove();
 			changeScore((int) (getParamsByClass(this.getClass()).mPrice * coeff));
+			changeUpkeep(-getParamsByClass(this.getClass()).mUpkeep);
 		}
 	}
 
@@ -482,6 +498,7 @@ public class TurnDefence implements ApplicationListener {
 				batch.draw(mCellBg, buildVector.x, buildVector.y);
 				batch.setColor(1.0f, 1.0f, 1.0f, 1.0f);
 			}
+			mMap.draw(batch, playerNumber);
 		}
 
 		@Override
@@ -503,6 +520,9 @@ public class TurnDefence implements ApplicationListener {
 
 				mSelected = null;
 			}
+
+			if (mTurnProcess != 0.0f)
+				return false;
 
 			if (!mBuildingProcess) {
 				buildVector.set((float) Math.floor(x / 64) * 64,
@@ -533,22 +553,16 @@ public class TurnDefence implements ApplicationListener {
 					mBuildingsGroup.addActor(mBuilding);
 					mSelected = mBuilding;
 				} catch (SecurityException e) {
-					// TODO Auto-generated catch block
 					e.printStackTrace();
 				} catch (NoSuchMethodException e) {
-					// TODO Auto-generated catch block
 					e.printStackTrace();
 				} catch (IllegalArgumentException e) {
-					// TODO Auto-generated catch block
 					e.printStackTrace();
 				} catch (InstantiationException e) {
-					// TODO Auto-generated catch block
 					e.printStackTrace();
 				} catch (IllegalAccessException e) {
-					// TODO Auto-generated catch block
 					e.printStackTrace();
 				} catch (InvocationTargetException e) {
-					// TODO Auto-generated catch block
 					e.printStackTrace();
 				}
 			}
@@ -628,7 +642,7 @@ public class TurnDefence implements ApplicationListener {
 	private class Unit extends Actor {
 		private float speed;
 		protected Color mColor;
-		private int life, originLife;
+		protected int life, originLife;
 		protected Texture mUnitTexture;
 		protected int playerNumber;
 		private float originY, totalDistance, moveDelta;
@@ -664,6 +678,11 @@ public class TurnDefence implements ApplicationListener {
 			this.deltaXY.set((nextXY.x - x), (nextXY.y - y));
 			this.dist.set(deltaXY);
 			this.deltaXY.nor();
+		}
+
+		protected void preDraw(SpriteBatch batch) {
+			mColor.a = mSelected != null ? 0.1f : 1.0f;
+			batch.setColor(mColor);
 		}
 
 		@Override
@@ -743,19 +762,21 @@ public class TurnDefence implements ApplicationListener {
 
 	private class Meteor extends Unit {
 
-		public Meteor(int playerNumber) {
+		public Meteor(int playerNumber, int life) {
 			super(mAssetManager.get("gfx/meteor_1.png", Texture.class),
 					playerNumber);
 			init(BFWIDTH / 2, mMap.getYbyX(BFWIDTH / 2),
-					mRandom.nextFloat() * 30 + 100, 50, 100);
+					mRandom.nextFloat() * 30 + 100, life, 150);
 		}
 
 		@Override
 		public void draw(SpriteBatch batch, float parentAlpha) {
-			batch.setColor(mColor);
+			preDraw(batch);
 			batch.draw(mUnitTexture, x - width / 2, y - height / 2, width / 2,
 					height / 2, width, height, 1.0f, 1.0f, mRuntime * 180, 0,
 					0, (int) width, (int) height, false, false);
+			// mPriceFont.setColor(mMainSkin.getColor("yellow"));
+			// mPriceFont.draw(batch, String.valueOf(life), x, y);
 			super.draw(batch, parentAlpha);
 		}
 
@@ -777,17 +798,17 @@ public class TurnDefence implements ApplicationListener {
 				break;
 			}
 			init(mInitX, mMap.getYbyX(mInitX),
-					(mRandom.nextFloat() * 50 + 100), 100, 250);
+					(mRandom.nextFloat() * 50 + 100), 200, 250);
 		}
 
 		@Override
 		public void draw(SpriteBatch batch, float parentAlpha) {
-			batch.setColor(mColor);
+			preDraw(batch);
 			if (playerNumber == 0)
 				batch.draw(mUnitTexture, x - width / 2, y - height / 2, width,
 						height, 0, 0, 128, 64, true, false);
 			else
-				batch.draw(mUnitTexture, x, y);
+				batch.draw(mUnitTexture, x - width / 2, y - height / 2);
 			super.draw(batch, parentAlpha);
 		}
 	}
@@ -834,7 +855,7 @@ public class TurnDefence implements ApplicationListener {
 				camDeltaX, camDeltaY, interpolatedDelta;
 		private Camera camera;
 		private Vector3 dragVector = new Vector3();
-		private int i;
+		private int i, mMeteorLife = 50;
 		private Vector3[] mSmokeParticles;
 
 		public Background() {
@@ -876,9 +897,9 @@ public class TurnDefence implements ApplicationListener {
 					mSmokeParticles[i] = new Vector3();
 
 				if (mSmokeParticles[i].z == 0.0f) {
-					mSmokeParticles[i].x = screenWidth + mRandom.nextFloat()
+					mSmokeParticles[i].x = BFWIDTH / 2 + mRandom.nextFloat()
 							* 20.0f - 10.0f - 32.0f;
-					mSmokeParticles[i].y = screenHeight - mRandom.nextFloat()
+					mSmokeParticles[i].y = BFHEIGHT - mRandom.nextFloat()
 							* 20.0f - i * 30 - 40;
 					mSmokeParticles[i].z = mRandom.nextFloat();
 				}
@@ -925,8 +946,11 @@ public class TurnDefence implements ApplicationListener {
 				while (mTime > mSpawnDelay
 						|| mUnitsGroup[1 - mTurn].getActors().size() < 5) {
 					mTime -= mSpawnDelay;
-					mUnitsGroup[1 - mTurn].addActor(new Meteor(1 - mTurn));
-					if (mSpawnDelay > 0.4f)
+					mUnitsGroup[1 - mTurn].addActor(new Meteor(1 - mTurn,
+							mMeteorLife));
+					if (mMeteorLife < 121)
+						mMeteorLife += 1;
+					if (mSpawnDelay > 1.0f)
 						mSpawnDelay -= 0.01f;
 				}
 				mTurnProcess -= delta;
@@ -989,18 +1013,21 @@ public class TurnDefence implements ApplicationListener {
 
 	private class MoveMap {
 		private String mXYString[];
-		private Vector2 mMap[][];
+		private Vector2 mInternalMap[][];
 		private int x, y, x2, y2, cnt;
 		private boolean mMirror;
 		private Array<Vector2> mNextResult;
 		private Array<Float> mYbyXResult;
 		private Vector2 mSelectedResult;
+		private float mElemLen, mPathAlpha;
+		private Vector2 mNormalizedElem, mCurElem, mCurElemMeasure;
+		private Texture mPathTexture;
 
 		public MoveMap(String mapname) {
 			FileHandle mFileHandle = Gdx.files.internal(mapname);
 			String mString = mFileHandle.readString();
 			String mLines[] = mString.split("\n");
-			mMap = new Vector2[mLines.length][];
+			mInternalMap = new Vector2[mLines.length][];
 			cnt = 0;
 			for (String line : mLines) {
 				mXYString = line.split(" ");
@@ -1008,12 +1035,16 @@ public class TurnDefence implements ApplicationListener {
 				y = Integer.parseInt(mXYString[1]);
 				x2 = Integer.parseInt(mXYString[2]);
 				y2 = Integer.parseInt(mXYString[3]);
-				mMap[cnt] = new Vector2[] { new Vector2(x, y),
+				mInternalMap[cnt] = new Vector2[] { new Vector2(x, y),
 						new Vector2(x2, y2) };
 				cnt++;
 			}
 			mNextResult = new Array<Vector2>(5); // path forks
 			mYbyXResult = new Array<Float>(5);
+			mNormalizedElem = new Vector2();
+			mCurElem = new Vector2();
+			mCurElemMeasure = new Vector2();
+			mPathTexture = mAssetManager.get("gfx/path.png", Texture.class);
 		}
 
 		public Vector2 getNextXY(float curX, float curY, boolean toRight) {
@@ -1023,7 +1054,7 @@ public class TurnDefence implements ApplicationListener {
 				curX = BFWIDTH - curX;
 
 			mNextResult.clear();
-			for (Vector2[] XY : mMap) { // very strong magic
+			for (Vector2[] XY : mInternalMap) { // very strong magic
 				if (toRight != mMirror && XY[0].x == curX && XY[0].y == curY)
 					mNextResult.add(new Vector2(XY[1]));
 				if (toRight == mMirror && XY[1].x == curX && XY[1].y == curY)
@@ -1046,7 +1077,7 @@ public class TurnDefence implements ApplicationListener {
 			if (mMirror)
 				x = BFWIDTH - x;
 			mYbyXResult.clear();
-			for (Vector2[] XY : mMap) { // very strong magic
+			for (Vector2[] XY : mInternalMap) { // very strong magic
 				if (XY[0].x == x)
 					mYbyXResult.add(Float.valueOf(XY[0].y));
 				if (XY[1].x == x)
@@ -1056,6 +1087,37 @@ public class TurnDefence implements ApplicationListener {
 				return 360;
 
 			return mYbyXResult.random();
+		}
+
+		public void draw(SpriteBatch batch, int playerNumber) {
+			for (Vector2[] pathElement : mInternalMap) {
+				mCurElem.set(pathElement[1]).sub(pathElement[0]);
+				mNormalizedElem.set(mCurElem).nor().mul(STEP);
+				mElemLen = mCurElem.len();
+				mCurElem.set(pathElement[0]);
+				mCurElemMeasure.set(0.0f, 0.0f);
+				while (mCurElemMeasure.len() + STEP <= mElemLen) {
+					mPathAlpha = Math.abs(mCurElem.x - mRuntime
+							* SCANLINEPERIOD / SCANLINESLOWNESS
+							% SCANLINEPERIOD / SCANLINEPERIOD * BFWIDTH / 2);
+					if (mPathAlpha > 100)
+						mPathAlpha = 0.3f;
+					else
+						mPathAlpha = (100.0f - mPathAlpha) / 145.0f + 0.3f;
+					batch.setColor(1.0f, 1.0f, 1.0f, mPathAlpha);
+					if (playerNumber == 0)
+						batch.draw(mPathTexture,
+								mCurElem.x - mPathTexture.getWidth() / 2,
+								mCurElem.y - mPathTexture.getHeight() / 2);
+					else
+						batch.draw(mPathTexture, BFWIDTH - mCurElem.x
+								- mPathTexture.getWidth() / 2, mCurElem.y
+								- mPathTexture.getHeight() / 2);
+					mCurElem.add(mNormalizedElem);
+					mCurElemMeasure.add(mNormalizedElem);
+				}
+			}
+			batch.setColor(1.0f, 1.0f, 1.0f, 1.0f);
 		}
 	}
 }
