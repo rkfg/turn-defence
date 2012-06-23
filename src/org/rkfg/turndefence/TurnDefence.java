@@ -67,7 +67,7 @@ public class TurnDefence implements ApplicationListener {
     private Array<BuildingParams> mBuildingParamsList;
     private MoveMap mMap;
     private List<String> mTextures = Arrays.asList("cannon2.png", "edge.png",
-            "explosion.png", "floor2.png", "road.png", "ship_1.png",
+            "explosion.png", "floor2.png", "ship_1.png",
             "meteor_1.png", "stars_1.jpg", "button.png", "beacon_1.png",
             "menuitembg.png", "smoke.png", "range_active.png",
             "range_passive.png", "building_ph.png", "path.png");
