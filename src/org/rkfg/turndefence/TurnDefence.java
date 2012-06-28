@@ -3,6 +3,7 @@ package org.rkfg.turndefence;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Random;
 
@@ -35,41 +36,44 @@ import com.badlogic.gdx.utils.Array;
 
 public class TurnDefence implements ApplicationListener {
     private static float BFWIDTH = 2048.0f, BFHEIGHT = 720.0f,
-            TURNSWITCH = 1.0f;
+            TURNSWITCH = 1.0f, // turn switch transition in seconds
+            GAMESTEP = 0.02f, // game logic step in seconds
+            STEP = 32.0f, // path points step
+            SCANLINEPERIOD = 4000.0f, SCANLINESLOWNESS = 4.0f;
     private static int PLWIDTH = 14, PLHEIGHT = 8;
-    private static float STEP = 64.0f, SCANLINEPERIOD = 4000.0f,
-            SCANLINESLOWNESS = 4.0f;
 
-    private Texture mExplosionTexture, mCellBg;
-    private float screenWidth, screenHeight;
-    private Platform player1Platform, player2Platform;
-    private int mTurn;
-    private float mTime = 0.0f, mRuntime = 0.0f;
-    private float mSpawnDelay = 1.0f;
-    private Stage mStage, mUI;
-    private BuildMenu mBuildMenu;
     private InputMultiplexer mInputMultiplexer;
+    private Random mRandom;
+    private float screenWidth, screenHeight;
+    private Stage mStage, mUI;
     private Group mStaticGroup, mPlatformsGroup, mBuildingsGroup,
             mUnitsGroup[];
     private Label mScoreLabel, mUpkeepLabel, mPlayerLabel;
-    private TextButton mDoTurn;
+    private TextButton mDoTurn, mBackInTime;
     private Skin mMainSkin;
     private Building mSelected;
-    private int mScore[], mPlayerUpkeep;
-    private float mTurnProcess, mTurnSwitchProcess;
+    private Platform player1Platform, player2Platform;
+    private BuildingMenu mBuildMenu;
     private boolean mGameOver;
-    private Pixmap mHealthPixmap;
-    private Texture mHealthTexture;
+
+    private int mScore[], mPlayerUpkeep, mTurn, mTurnProcess, mPlayTime,
+            mTargetPlayTime, mPresentPlayTime, mMeteorTime[] = {
+                    (int) (1 / GAMESTEP), (int) (1 / GAMESTEP) },
+            mMeteorLife = 50, mSpawnDelay = (int) (1 / GAMESTEP);
+    private float mRuntime = 0.0f, mTurnSwitchProcess, mDeltaIteration,
+            mDeltaIterationRemainder;
+    private TimeMachine mTimeMachine;
+
     private AssetManager mAssetManager;
-    private Random mRandom;
+    private Pixmap mHealthPixmap;
+    private Texture mHealthTexture, mExplosionTexture, mCellBg;
     private BitmapFont mPriceFont;
-    private float mDeltaIteration;
     private Array<BuildingParams> mBuildingParamsList;
     private MoveMap mMap;
     private List<String> mTextures = Arrays.asList("cannon2.png", "edge.png",
-            "explosion.png", "floor2.png", "ship_1.png",
-            "meteor_1.png", "stars_1.jpg", "button.png", "beacon_1.png",
-            "menuitembg.png", "smoke.png", "range_active.png",
+            "explosion.png", "floor2.png", "ship_1.png", "meteor_1.png",
+            "meteor_2.png", "meteor_3.png", "stars_1.jpg", "button.png",
+            "beacon_1.png", "menuitembg.png", "smoke.png", "range_active.png",
             "range_passive.png", "building_ph.png", "path.png");
 
     @Override
@@ -126,7 +130,7 @@ public class TurnDefence implements ApplicationListener {
         mUpkeepLabel.y = screenHeight - mScoreLabel.getPrefHeight();
         mUI.addActor(mUpkeepLabel);
         mTurn = 0;
-        mTurnProcess = 3.0f;
+        mTurnProcess = (int) (3 / GAMESTEP);
         mPlayerLabel = new Label("Player " + (mTurn + 1) + " turn", mMainSkin);
         mPlayerLabel.x = screenWidth - mPlayerLabel.getTextBounds().width - 10;
         mPlayerLabel.y = screenHeight - mPlayerLabel.getPrefHeight();
@@ -138,23 +142,78 @@ public class TurnDefence implements ApplicationListener {
 
             @Override
             public void click(Actor actor, float x, float y) {
-                if (mTurnProcess == 0.0f && !mGameOver) {
+                if (mTurnProcess == 0 && !mGameOver) {
                     mBuildMenu.hide();
                     if (mSelected != null && !mSelected.isActive())
                         mSelected.sell(1.0f);
 
                     mPlayerUpkeep = 0;
                     mSelected = null;
-                    mTurnProcess = 3.0f;
+                    mTurnProcess = (int) (3 / GAMESTEP);
                     mTurnSwitchProcess = TURNSWITCH;
                     mTurn = 1 - mTurn;
+                    mTimeMachine.storeEvent(mPlayTime, new GameEvent(
+                            EventType.TURN, mTurn));
                     mPlayerLabel.setText("Player " + (mTurn + 1) + " turn");
                     changeScore(0);
                 }
             }
         });
         mUI.addActor(mDoTurn);
-        mBuildMenu = new BuildMenu(mUI);
+        mBackInTime = new TextButton("Get back", mMainSkin);
+        mBackInTime.x = screenWidth - mBackInTime.width;
+        mBackInTime.y = 10;
+        mBackInTime.setClickListener(new ClickListener() {
+
+            @Override
+            public void click(Actor actor, float x, float y) {
+                if (mTurnProcess == 0 && !mGameOver && mPlayTime > 6 / GAMESTEP) {
+                    Array<GameEvent> events;
+                    mPresentPlayTime = mPlayTime; // store the present
+                    mTargetPlayTime = (int) (mPlayTime - 6 / GAMESTEP);
+                    mMeteorTime[0] = mMeteorTime[1] = (int) (1 / GAMESTEP);
+                    mBuildingsGroup.clear();
+                    mUnitsGroup[0].clear();
+                    mUnitsGroup[1].clear();
+                    mScore[0] = mScore[1] = 5000;
+                    mTurnProcess = 1;
+                    mTurnSwitchProcess = 0;
+                    mTurn = 0;
+                    mPlayTime = 0;
+                    mMeteorLife = 50;
+                    mSpawnDelay = (int) (1 / GAMESTEP);
+                    while (mPlayTime < mTargetPlayTime) {
+                        events = mTimeMachine.getEvents(mPlayTime);
+                        if (events != null) { // something to replay
+                            for (GameEvent event : events) {
+                                event.bound = false;
+                                switch (event.eventType) {
+                                case BUILD:
+                                    try {
+                                        Building replayBuilding = (Building) event.building
+                                                .clone();
+                                        mBuildingsGroup
+                                                .addActor(replayBuilding);
+                                        replayBuilding.mActive = true;
+                                    } catch (CloneNotSupportedException e) {
+                                        e.printStackTrace();
+                                    }
+                                    break;
+                                case TURN:
+                                    mTurn = event.number;
+                                    break;
+                                }
+                            }
+                        }
+                        mStage.act(GAMESTEP);
+                        mPlayTime += 1;
+                    }
+                    mTurnProcess = 0;
+                }
+            }
+        });
+        mUI.addActor(mBackInTime);
+        mBuildMenu = new BuildingMenu(mUI, mBuildingParamsList);
         player1Platform = new Platform(0.0f, 64.0f, PLWIDTH, PLHEIGHT, 0);
         player2Platform = new Platform(BFWIDTH - 64 * PLWIDTH, 64.0f, PLWIDTH,
                 PLHEIGHT, 1);
@@ -164,6 +223,7 @@ public class TurnDefence implements ApplicationListener {
         mExplosionTexture = mAssetManager.get("gfx/explosion.png",
                 Texture.class);
         mMap = new MoveMap("maps/map_1.txt");
+        mTimeMachine = new TimeMachine();
     }
 
     @Override
@@ -174,18 +234,22 @@ public class TurnDefence implements ApplicationListener {
     @Override
     public void render() {
         Gdx.gl.glClear(GL10.GL_COLOR_BUFFER_BIT);
-        mDeltaIteration = Gdx.graphics.getDeltaTime();
-        while (mDeltaIteration > 0.1f) {
-            mStage.act(0.1f);
-            mUI.act(0.1f);
-            mRuntime += 0.1f;
-            mDeltaIteration -= 0.1f;
+        mDeltaIteration = Gdx.graphics.getDeltaTime()
+                + mDeltaIterationRemainder;
+        while (mDeltaIteration > GAMESTEP) {
+            mStage.act(GAMESTEP);
+            mUI.act(GAMESTEP);
+            mRuntime += GAMESTEP;
+            mDeltaIteration -= GAMESTEP;
+            if (mTurnProcess > 0) {
+                mTurnProcess -= 1;
+                mPlayTime += 1;
+            }
         }
-        mStage.act(mDeltaIteration);
-        mUI.act(mDeltaIteration);
+        mDeltaIterationRemainder = mDeltaIteration; // put the remains to the
+                                                    // next iteration
         mStage.draw();
         mUI.draw();
-        mRuntime += mDeltaIteration;
     }
 
     @Override
@@ -238,7 +302,7 @@ public class TurnDefence implements ApplicationListener {
         }
     }
 
-    private class Building extends Actor {
+    private class Building extends Actor implements Cloneable {
         protected Texture mBuildingTexture, mSelectedTexturePassive,
                 mSelectedTextureActive, mPHTexture;
         protected int playerNumber;
@@ -259,6 +323,11 @@ public class TurnDefence implements ApplicationListener {
             changeUpkeep(buildingParams.mUpkeep);
         }
 
+        @Override
+        protected Object clone() throws CloneNotSupportedException {
+            return super.clone();
+        }
+
         protected BuildingParams getParamsByClass(
                 Class<? extends Building> class_) {
             for (BuildingParams buildingParams : mBuildingParamsList) {
@@ -274,6 +343,12 @@ public class TurnDefence implements ApplicationListener {
             this.x = x;
             this.y = y;
             this.width = this.height = 64;
+            try {
+                mTimeMachine.storeEvent(mPlayTime, new GameEvent(
+                        EventType.BUILD, (Building) this.clone()));
+            } catch (CloneNotSupportedException e) {
+                e.printStackTrace();
+            }
         }
 
         @Override
@@ -289,7 +364,7 @@ public class TurnDefence implements ApplicationListener {
                 mUpkeep = false;
                 return;
             }
-            if (!mUpkeep && mTurnProcess > 0.0f) {
+            if (!mUpkeep && mTurnProcess > 0) {
                 mUpkeep = true;
                 for (BuildingParams buildingParams : mBuildingParamsList) {
                     if (buildingParams.mClass == this.getClass()) {
@@ -338,7 +413,7 @@ public class TurnDefence implements ApplicationListener {
         private Actor damagedActor;
         private double distance;
         private float prevDist;
-        public static final float range = 200.0f;
+        public static final float range = 100.0f;
         private float mRangeScale;
 
         public BasicCannon(float x, float y, int playerNumber) {
@@ -388,7 +463,7 @@ public class TurnDefence implements ApplicationListener {
                 return;
 
             super.act(delta);
-            if (mGameOver || mTurnProcess == 0.0f || playerNumber != mTurn)
+            if (mGameOver || mTurnProcess == 0 || playerNumber != mTurn)
                 return;
 
             reload -= delta;
@@ -420,12 +495,12 @@ public class TurnDefence implements ApplicationListener {
 
     private class Beacon extends Building {
 
-        private float mGenTime;
+        private int mGenTime;
 
         public Beacon(float x, float y, int playerNumber) {
             super(playerNumber);
             init(x, y);
-            this.mGenTime = 0.0f;
+            this.mGenTime = 0;
         }
 
         @Override
@@ -447,12 +522,21 @@ public class TurnDefence implements ApplicationListener {
                 return;
 
             super.act(delta);
-            if (playerNumber == mTurn || mTurnProcess == 0.0f)
+            if (playerNumber == mTurn || mTurnProcess == 0)
                 return;
 
-            mGenTime += delta;
-            if (mGenTime > 3.0f) {
-                mGenTime -= 3.0f;
+            mGenTime += 1;
+            if (mGenTime > 3 / GAMESTEP) {
+                mGenTime -= 3 / GAMESTEP;
+                if (mPlayTime < mPresentPlayTime
+                        && mTimeMachine.getEvents(mPlayTime) != null) {
+                    try {
+                        mUnitsGroup[1 - mTurn].addActor(mTimeMachine.respawn(
+                                mPlayTime, Ship.class, 1 - mTurn));
+                        return;
+                    } catch (org.rkfg.turndefence.TurnDefence.TimeMachine.NotRespawnable e) {
+                    }
+                }
                 Ship newShip = new Ship(1 - mTurn);
                 mUnitsGroup[1 - mTurn].addActor(newShip);
             }
@@ -493,8 +577,8 @@ public class TurnDefence implements ApplicationListener {
 
             if (mBuildingProcess) {
                 mHighlightPhase = (float) Math.sin(mRuntime * 2);
-                batch.setColor(0.3f, 0.3f + (mHighlightPhase + 1) * 0.35f,
-                        0.3f, (mHighlightPhase + 1) / 3);
+                batch.setColor(0.5f, 1.0f, 0.5f,
+                        (mHighlightPhase + 1) / 3 + 0.1f);
                 batch.draw(mCellBg, buildVector.x, buildVector.y);
                 batch.setColor(1.0f, 1.0f, 1.0f, 1.0f);
             }
@@ -521,7 +605,7 @@ public class TurnDefence implements ApplicationListener {
                 mSelected = null;
             }
 
-            if (mTurnProcess != 0.0f)
+            if (mTurnProcess != 0)
                 return false;
 
             if (!mBuildingProcess) {
@@ -543,7 +627,7 @@ public class TurnDefence implements ApplicationListener {
 
         public void build(int type) {
             mBuildingParams = mBuildingParamsList.get(type);
-            if (mScore[mTurn] >= mBuildingParams.mPrice) {
+            if (mScore[mTurn] - mPlayerUpkeep >= mBuildingParams.mPrice) {
                 try {
                     ctor = mBuildingParams.mClass.getConstructor(
                             TurnDefence.class, float.class, float.class,
@@ -570,14 +654,16 @@ public class TurnDefence implements ApplicationListener {
         }
     }
 
-    private class BuildMenu extends Actor {
+    private class BuildingMenu extends Actor {
         private float menuX;
         private Stage mStage;
         private Platform callback;
+        private Array<BuildingParams> mLocalBuildingParamsList;
 
-        public BuildMenu(Stage stage) {
+        public BuildingMenu(Stage stage, Array<BuildingParams> buildingParams) {
             this.mStage = stage;
-            this.width = 70.0f * mBuildingParamsList.size;
+            mLocalBuildingParamsList = buildingParams;
+            this.width = 70.0f * mLocalBuildingParamsList.size;
             this.height = 64.0f;
         }
 
@@ -605,7 +691,7 @@ public class TurnDefence implements ApplicationListener {
         public void draw(SpriteBatch batch, float parentAlpha) {
             this.menuX = x;
             for (BuildingParams buildParams : mBuildingParamsList) {
-                if (buildParams.mPrice > mScore[mTurn])
+                if (buildParams.mPrice > mScore[mTurn] - mPlayerUpkeep)
                     batch.setColor(1.0f, 0.3f, 0.3f, 0.7f);
                 else
                     batch.setColor(0.3f, 1.0f, 0.3f, 0.7f);
@@ -639,23 +725,34 @@ public class TurnDefence implements ApplicationListener {
         }
     }
 
-    private class Unit extends Actor {
-        private float speed;
+    private class Unit extends Actor implements Cloneable {
+        protected float speed;
         protected Color mColor;
         protected int life, originLife;
         protected Texture mUnitTexture;
         protected int playerNumber;
-        private float originY, totalDistance, moveDelta;
-        private int mReward;
-        private Vector2 nextXY, deltaXY, dist;
+        protected float originY, totalDistance, moveDelta;
+        protected int mReward;
+        protected Vector2 nextXY, deltaXY, dist;
 
         public Unit(Texture texture, int playerNumber) {
             mUnitTexture = texture;
             width = texture.getWidth();
             height = texture.getHeight();
             this.playerNumber = playerNumber;
-            this.mColor = new Color(mRandom.nextFloat(), mRandom.nextFloat(),
-                    mRandom.nextFloat(), 1.0f);
+            if (playerNumber == 0)
+                this.mColor = new Color(0.2f, 0.8f, 0.4f, 1.0f);
+            else
+                this.mColor = new Color(0.8f, 0.4f, 0.2f, 1.0f);
+        }
+
+        @Override
+        protected Object clone() throws CloneNotSupportedException {
+            Unit clonedUnit = (Unit)super.clone();
+            clonedUnit.deltaXY = new Vector2();
+            clonedUnit.nextXY = new Vector2();
+            clonedUnit.dist = new Vector2();
+            return clonedUnit;
         }
 
         protected void init(float x, float y, float speed, int life, int reward) {
@@ -670,6 +767,12 @@ public class TurnDefence implements ApplicationListener {
             this.deltaXY = new Vector2();
             this.nextXY = new Vector2();
             this.dist = new Vector2();
+            try {
+                mTimeMachine.storeEvent(mPlayTime, new GameEvent(
+                        EventType.SPAWN, (Unit) this.clone()));
+            } catch (CloneNotSupportedException e) {
+                e.printStackTrace();
+            }
             nextPath();
         }
 
@@ -689,9 +792,10 @@ public class TurnDefence implements ApplicationListener {
         public void draw(SpriteBatch batch, float parentAlpha) {
             if (life > originLife / 2) {
                 batch.setColor((originLife - life) / originLife * 2, 1.0f,
-                        0.0f, 1.0f);
+                        0.0f, mSelected != null ? 0.1f : 1.0f);
             } else {
-                batch.setColor(1.0f, life / originLife * 2, 0.0f, 1.0f);
+                batch.setColor(1.0f, life / originLife * 2, 0.0f,
+                        mSelected != null ? 0.1f : 1.0f);
             }
             batch.draw(mHealthTexture, x - width / 2, y + height / 2 + 6, width
                     * life / originLife, 4.0f);
@@ -706,7 +810,7 @@ public class TurnDefence implements ApplicationListener {
             if (playerNumber == mTurn)
                 return;
 
-            if (mGameOver || mTurnProcess == 0.0f)
+            if (mGameOver || mTurnProcess == 0)
                 return;
 
             while (true) {
@@ -762,19 +866,21 @@ public class TurnDefence implements ApplicationListener {
 
     private class Meteor extends Unit {
 
-        public Meteor(int playerNumber, int life) {
-            super(mAssetManager.get("gfx/meteor_1.png", Texture.class),
-                    playerNumber);
+        public Meteor(int playerNumber, int meteorType, int life) {
+            super(mAssetManager.get("gfx/meteor_" + meteorType + ".png",
+                    Texture.class), playerNumber);
             init(BFWIDTH / 2, mMap.getYbyX(BFWIDTH / 2),
-                    mRandom.nextFloat() * 30 + 100, life, 150);
+                    mRandom.nextFloat() * 30 + 100, life,
+                    150 + 50 * (3 - meteorType));
         }
 
         @Override
         public void draw(SpriteBatch batch, float parentAlpha) {
             preDraw(batch);
             batch.draw(mUnitTexture, x - width / 2, y - height / 2, width / 2,
-                    height / 2, width, height, 1.0f, 1.0f, mRuntime * 180, 0,
-                    0, (int) width, (int) height, false, false);
+                    height / 2, width, height, 1.0f, 1.0f, mRuntime * 180
+                            * speed / 130 * (playerNumber * 2 - 1), 0, 0,
+                    (int) width, (int) height, false, false);
             // mPriceFont.setColor(mMainSkin.getColor("yellow"));
             // mPriceFont.draw(batch, String.valueOf(life), x, y);
             super.draw(batch, parentAlpha);
@@ -855,8 +961,9 @@ public class TurnDefence implements ApplicationListener {
                 camDeltaX, camDeltaY, interpolatedDelta;
         private Camera camera;
         private Vector3 dragVector = new Vector3();
-        private int i, mMeteorLife = 50;
+        private int i;
         private Vector3[] mSmokeParticles;
+        private int mMeteorSize;
 
         public Background() {
             super();
@@ -875,12 +982,14 @@ public class TurnDefence implements ApplicationListener {
         public void draw(SpriteBatch batch, float parentAlpha) {
             batch.draw(mBackgroundTexture, x, y, width, height);
             for (Vector3 particle : mSmokeParticles) {
-                batch.setColor(1.0f, 1.0f, 1.0f, particle.z);
-                batch.draw(mSmokeTexture, particle.x, particle.y, 32.0f, 32.0f,
-                        64.0f, 64.0f, 2.0f - particle.z, 2.0f - particle.z,
-                        particle.z * 180 + particle.y, 0, 0, 64, 64, false,
-                        false);
-                batch.setColor(1.0f, 1.0f, 1.0f, 1.0f);
+                if (particle != null) {
+                    batch.setColor(1.0f, 1.0f, 1.0f, particle.z);
+                    batch.draw(mSmokeTexture, particle.x, particle.y, 32.0f,
+                            32.0f, 64.0f, 64.0f, 2.0f - particle.z,
+                            2.0f - particle.z, particle.z * 180 + particle.y,
+                            0, 0, 64, 64, false, false);
+                    batch.setColor(1.0f, 1.0f, 1.0f, 1.0f);
+                }
             }
         }
 
@@ -940,22 +1049,42 @@ public class TurnDefence implements ApplicationListener {
                 }
             }
 
-            if (mTurnProcess > 0.0f && mTurnSwitchProcess == 0.0f) { // move
-                                                                     // units
-                mTime += delta;
-                while (mTime > mSpawnDelay
-                        || mUnitsGroup[1 - mTurn].getActors().size() < 5) {
-                    mTime -= mSpawnDelay;
-                    mUnitsGroup[1 - mTurn].addActor(new Meteor(1 - mTurn,
-                            mMeteorLife));
+            if (mTurnProcess > 0 && mTurnSwitchProcess == 0.0f) { // move
+                                                                  // units
+                mMeteorTime[mTurn] += 1;
+                if (mMeteorTime[mTurn] > mSpawnDelay) {
+                    mMeteorTime[mTurn] -= mSpawnDelay;
+                    if (mPlayTime < mPresentPlayTime
+                            && mTimeMachine.getEvents(mPlayTime) != null) {
+                        try {
+                            mUnitsGroup[1 - mTurn]
+                                    .addActor(mTimeMachine.respawn(mPlayTime,
+                                            Meteor.class, 1 - mTurn));
+                        } catch (org.rkfg.turndefence.TurnDefence.TimeMachine.NotRespawnable e) {
+                            Gdx.app.log("Respawn", "AW FUCK!");
+                        }
+                    } else {
+                        mMeteorSize = mRandom.nextInt(6);
+                        Meteor meteor;
+                        switch (mMeteorSize) {
+                        case 0:
+                            meteor = new Meteor(1 - mTurn, 1, mMeteorLife * 2);
+                            break;
+                        case 1:
+                        case 2:
+                            meteor = new Meteor(1 - mTurn, 2, mMeteorLife);
+                            break;
+                        default:
+                            meteor = new Meteor(1 - mTurn, 3, mMeteorLife / 2);
+                            break;
+                        }
+                        mUnitsGroup[1 - mTurn].addActor(meteor);
+                    }
                     if (mMeteorLife < 121)
                         mMeteorLife += 1;
                     if (mSpawnDelay > 1.0f)
                         mSpawnDelay -= 0.01f;
                 }
-                mTurnProcess -= delta;
-                if (mTurnProcess < 0.0f)
-                    mTurnProcess = 0.0f;
             }
 
         }
@@ -1022,8 +1151,10 @@ public class TurnDefence implements ApplicationListener {
         private float mElemLen, mPathAlpha;
         private Vector2 mNormalizedElem, mCurElem, mCurElemMeasure;
         private Texture mPathTexture;
+        private Array<Vector2> mPathPoints;
 
         public MoveMap(String mapname) {
+            mPathPoints = new Array<Vector2>(100);
             FileHandle mFileHandle = Gdx.files.internal(mapname);
             String mString = mFileHandle.readString();
             String mLines[] = mString.split("\n");
@@ -1089,35 +1220,124 @@ public class TurnDefence implements ApplicationListener {
             return mYbyXResult.random();
         }
 
+        private void drawPoint(SpriteBatch batch, int playerNumber,
+                Vector2 curElem) {
+            mPathAlpha = Math.abs(curElem.x - mRuntime * SCANLINEPERIOD
+                    / SCANLINESLOWNESS % SCANLINEPERIOD / SCANLINEPERIOD
+                    * BFWIDTH / 2);
+            if (mPathAlpha > 100)
+                mPathAlpha = 0.5f;
+            else
+                mPathAlpha = (100.0f - mPathAlpha) / 200.0f + 0.5f;
+            if (playerNumber == 0) {
+                batch.setColor(0.6f, 1.0f, 0.6f, mPathAlpha);
+                batch.draw(mPathTexture, curElem.x - mPathTexture.getWidth()
+                        / 2, curElem.y - mPathTexture.getHeight() / 2);
+            } else {
+                batch.setColor(1.0f, 0.6f, 0.6f, mPathAlpha);
+                batch.draw(mPathTexture,
+                        BFWIDTH - curElem.x - mPathTexture.getWidth() / 2,
+                        curElem.y - mPathTexture.getHeight() / 2);
+            }
+        }
+
         public void draw(SpriteBatch batch, int playerNumber) {
-            for (Vector2[] pathElement : mInternalMap) {
-                mCurElem.set(pathElement[1]).sub(pathElement[0]);
-                mNormalizedElem.set(mCurElem).nor().mul(STEP);
-                mElemLen = mCurElem.len();
-                mCurElem.set(pathElement[0]);
-                mCurElemMeasure.set(0.0f, 0.0f);
-                while (mCurElemMeasure.len() + STEP <= mElemLen) {
-                    mPathAlpha = Math.abs(mCurElem.x - mRuntime
-                            * SCANLINEPERIOD / SCANLINESLOWNESS
-                            % SCANLINEPERIOD / SCANLINEPERIOD * BFWIDTH / 2);
-                    if (mPathAlpha > 100)
-                        mPathAlpha = 0.3f;
-                    else
-                        mPathAlpha = (100.0f - mPathAlpha) / 145.0f + 0.3f;
-                    batch.setColor(1.0f, 1.0f, 1.0f, mPathAlpha);
-                    if (playerNumber == 0)
-                        batch.draw(mPathTexture,
-                                mCurElem.x - mPathTexture.getWidth() / 2,
-                                mCurElem.y - mPathTexture.getHeight() / 2);
-                    else
-                        batch.draw(mPathTexture, BFWIDTH - mCurElem.x
-                                - mPathTexture.getWidth() / 2, mCurElem.y
-                                - mPathTexture.getHeight() / 2);
-                    mCurElem.add(mNormalizedElem);
-                    mCurElemMeasure.add(mNormalizedElem);
+            if (mPathPoints.size == 0) {
+                for (Vector2[] pathElement : mInternalMap) {
+                    mCurElem.set(pathElement[1]).sub(pathElement[0]);
+                    mNormalizedElem.set(mCurElem).nor().mul(STEP);
+                    mElemLen = mCurElem.len();
+                    mCurElem.set(pathElement[0]);
+                    mCurElemMeasure.set(0.0f, 0.0f);
+                    while (mCurElemMeasure.len() + STEP <= mElemLen) {
+                        drawPoint(batch, playerNumber, mCurElem);
+                        mPathPoints.add(mCurElem.cpy());
+                        mCurElem.add(mNormalizedElem);
+                        mCurElemMeasure.add(mNormalizedElem);
+                    }
+                }
+            } else {
+                for (Vector2 pathElement : mPathPoints) {
+                    drawPoint(batch, playerNumber, pathElement);
                 }
             }
             batch.setColor(1.0f, 1.0f, 1.0f, 1.0f);
+        }
+    }
+
+    public enum EventType {
+        BUILD, SELL, UPGRADE, SPAWN, TURN
+    }
+
+    private class GameEvent {
+        public EventType eventType;
+        public Building building;
+        public Unit unit;
+        public int number;
+        public boolean bound; // is the event bound to a cause
+
+        private GameEvent(EventType eventType) {
+            this.eventType = eventType;
+        }
+
+        private GameEvent(EventType eventType, int number) {
+            this(eventType);
+            this.number = number;
+        }
+
+        public GameEvent(EventType eventType, Building building) {
+            this(eventType);
+            this.building = building;
+        }
+
+        public GameEvent(EventType eventType, Unit unit) {
+            this(eventType);
+            this.unit = unit;
+        }
+    }
+
+    private class TimeMachine { // time manager
+        private HashMap<Integer, Array<GameEvent>> mEvents;
+
+        public class NotRespawnable extends Exception {
+
+            /**
+             * 
+             */
+            private static final long serialVersionUID = 1L;
+
+        }
+
+        public TimeMachine() {
+            mEvents = new HashMap<Integer, Array<GameEvent>>();
+        }
+
+        public void storeEvent(int time, GameEvent event) {
+            if (!mEvents.containsKey(time))
+                mEvents.put(time, new Array<GameEvent>(10));
+            mEvents.get(time).add(event);
+        }
+
+        public Array<GameEvent> getEvents(int time) {
+            return mEvents.get(time);
+        }
+
+        public Actor respawn(int time, Class<? extends Actor> classFilter,
+                int playerNumber) throws NotRespawnable {
+            for (GameEvent event : getEvents(time)) {
+                if (!event.bound && event.eventType == EventType.SPAWN
+                        && event.unit.getClass() == classFilter
+                        && event.unit.playerNumber == playerNumber) {
+                    event.bound = true;
+                    try {
+                        return (Actor) event.unit.clone();
+                    } catch (CloneNotSupportedException e) {
+                        // TODO Auto-generated catch block
+                        throw new NotRespawnable();
+                    }
+                }
+            }
+            throw new NotRespawnable();
         }
     }
 }
