@@ -2,13 +2,14 @@ package org.rkfg.turndefence;
 
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.badlogic.gdx.scenes.scene2d.Actor;
+import com.badlogic.gdx.utils.Array;
 
 class Beacon extends Building {
 
     private int mGenTime;
 
     public Beacon(float x, float y, int playerNumber) {
-        super(playerNumber);
+        super(playerNumber, new Array<BuildingParams>());
         init(x, y);
         this.mGenTime = 0;
     }

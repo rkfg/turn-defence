@@ -4,6 +4,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Random;
 
+import com.badlogic.gdx.Application;
 import com.badlogic.gdx.ApplicationListener;
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.InputMultiplexer;
@@ -68,11 +69,12 @@ public class TurnDefence implements ApplicationListener {
             "explosion.png", "floor2.png", "ship_1.png", "meteor_1.png",
             "meteor_2.png", "meteor_3.png", "stars_1.jpg", "button.png",
             "beacon_1.png", "menuitembg.png", "smoke.png", "range_active.png",
-            "range_passive.png", "building_ph.png", "path.png");
+            "range_passive.png", "building_ph.png", "path.png", "recycle.png");
     static BitmapFont PriceFont;
 
     @Override
     public void create() {
+        Gdx.app.setLogLevel(Application.LOG_DEBUG);
         screenWidth = Gdx.graphics.getWidth();
         screenHeight = Gdx.graphics.getHeight();
         Score = new int[2];
@@ -140,16 +142,16 @@ public class TurnDefence implements ApplicationListener {
                 if (PlayTime < PresentPlayTime)
                     timeTravel(PresentPlayTime);
                 if (TurnProcess == 0 && !GameOver) {
-                    BuildMenu.hide();
+                    BuildingMenu.hideAll();
                     if (Selected != null && !Selected.isActive())
                         Selected.sell(1.0f);
 
                     PlayerUpkeep = 0;
                     Selected = null;
-                    TurnProcess = 3 * PPS;
+                    TurnProcess = 0;
                     TurnSwitchProcess = TURNSWITCH;
                     Turn = 1 - Turn;
-                    TimeMachine.storeEvent(PlayTime, new GameEvent(
+                    TimeMachine.storeEvent(PlayTime + 1, new GameEvent(
                             EventType.TURN, Turn));
                     mPlayerLabel.setText("Player " + (Turn + 1) + " turn");
                     changeScore(0);
@@ -197,10 +199,11 @@ public class TurnDefence implements ApplicationListener {
                                     // yet :[
             return;
 
+        Gdx.app.debug("Travel", String.format("Going to time: %d", time));
         init();
         TurnProcess = 1;
         Array<GameEvent> events;
-        while (PlayTime < time) {
+        while (PlayTime <= time) {
             events = TimeMachine.getEvents(PlayTime);
             if (events != null) { // something to replay
                 for (GameEvent event : events) {
@@ -208,6 +211,9 @@ public class TurnDefence implements ApplicationListener {
                     switch (event.eventType) {
                     case BUILD:
                         try {
+                            Gdx.app.debug("Travel", String.format(
+                                    "Creating the building @ %f, %f",
+                                    event.building.x, event.building.y));
                             Building replayBuilding = (Building) event.building
                                     .clone(false);
                             if (replayBuilding != null) {
@@ -218,6 +224,24 @@ public class TurnDefence implements ApplicationListener {
                             e.printStackTrace();
                         }
                         break;
+                    case SELL:
+                        Gdx.app.debug("Travel", String.format(
+                                "Selling the building @ %f, %f for %d",
+                                event.building.x, event.building.y,
+                                event.number));
+                        for (Actor actor : BuildingsGroup.getActors()) {
+                            if (event.building.x == actor.x
+                                    && event.building.y == actor.y
+                                    && event.building.getClass() == actor
+                                            .getClass()) {
+                                Gdx.app.debug("Travel",
+                                        "Found the building to sell");
+                                Stage.removeActor(actor);
+                                changeScore(event.number);
+                                break;
+                            }
+                        }
+                        break;
                     case TURN:
                         Turn = event.number;
                         PlayerUpkeep = 0;
@@ -225,8 +249,17 @@ public class TurnDefence implements ApplicationListener {
                     }
                 }
             }
-            Stage.act(GAMESTEP);
-            PlayTime += 1;
+            if (PlayTime < time) {
+                Stage.act(GAMESTEP);
+                PlayTime += 1;
+            } else {
+                break;
+            }
+            Gdx.app.debug(
+                    "Travel",
+                    String.format(
+                            "Runtime: %f, TurnProcess: %d, PlayTime: %d, PresentPlayTime: %d",
+                            Runtime, TurnProcess, PlayTime, PresentPlayTime));
         }
         TurnProcess = 0;
         changeScore(0);
@@ -253,6 +286,11 @@ public class TurnDefence implements ApplicationListener {
                 PlayTime += 1;
                 if (PlayTime > PresentPlayTime)
                     PresentPlayTime = PlayTime; // sync the present time
+                Gdx.app.debug(
+                        "Render",
+                        String.format(
+                                "Runtime: %f, TurnProcess: %d, PlayTime: %d, PresentPlayTime: %d",
+                                Runtime, TurnProcess, PlayTime, PresentPlayTime));
             }
         }
         mDeltaIterationRemainder = mDeltaIteration; // put the remains to the

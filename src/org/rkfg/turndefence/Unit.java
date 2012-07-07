@@ -1,5 +1,6 @@
 package org.rkfg.turndefence;
 
+import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
@@ -7,7 +8,7 @@ import com.badlogic.gdx.math.Vector2;
 import com.badlogic.gdx.scenes.scene2d.Actor;
 
 public class Unit extends Actor implements Cloneable {
-    protected float speed;
+    protected int speed;
     protected Color mColor;
     protected int life, originLife;
     protected Texture mUnitTexture;
@@ -36,7 +37,7 @@ public class Unit extends Actor implements Cloneable {
         return clonedUnit;
     }
 
-    protected void init(float x, float y, float speed, int life, int reward) {
+    protected void init(float x, float y, int speed, int life, int reward) {
         this.x = x;
         this.y = y;
         this.originY = y;
@@ -49,8 +50,14 @@ public class Unit extends Actor implements Cloneable {
         this.nextXY = new Vector2();
         this.dist = new Vector2();
         try {
-            TimeMachine.storeEvent(TurnDefence.PlayTime, new GameEvent(EventType.SPAWN,
-                    (Unit) this.clone()));
+            Gdx.app.debug(
+                    "Unit init",
+                    String.format(
+                            "life: %d, speed: %d, playerNumber: %d, playtime: %s, classname: %s",
+                            life, speed, playerNumber, TurnDefence.PlayTime,
+                            getClass().getSimpleName()));
+            TimeMachine.storeEvent(TurnDefence.PlayTime, new GameEvent(
+                    EventType.SPAWN, (Unit) this.clone()));
         } catch (CloneNotSupportedException e) {
             e.printStackTrace();
         }
@@ -78,8 +85,8 @@ public class Unit extends Actor implements Cloneable {
             batch.setColor(1.0f, life / originLife * 2, 0.0f,
                     TurnDefence.Selected != null ? 0.1f : 1.0f);
         }
-        batch.draw(TurnDefence.HealthTexture, x - width / 2, y + height / 2 + 6, width
-                * life / originLife, 4.0f);
+        batch.draw(TurnDefence.HealthTexture, x - width / 2,
+                y + height / 2 + 6, width * life / originLife, 4.0f);
         batch.setColor(Color.WHITE);
     }
 
@@ -87,7 +94,7 @@ public class Unit extends Actor implements Cloneable {
     public void act(float delta) {
         // Acts at enemy's turn
         super.act(delta);
-        y = (float) (originY + Math.sin(TurnDefence.Runtime + originY) * 3.0f);
+        y = (float) (originY + Math.sin(TurnDefence.Runtime + originY * x) * 3.0f);
         if (playerNumber == TurnDefence.Turn)
             return;
 

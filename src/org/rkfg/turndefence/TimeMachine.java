@@ -2,6 +2,7 @@ package org.rkfg.turndefence;
 
 import java.util.HashMap;
 
+import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.scenes.scene2d.Actor;
 import com.badlogic.gdx.utils.Array;
 
@@ -33,6 +34,10 @@ class TimeMachine { // time manager
                     && event.unit.playerNumber == playerNumber) {
                 event.bound = true;
                 try {
+                    Gdx.app.debug("Respawning", String.format(
+                            "Life: %d, speed: %d, playerNumber: %d",
+                            event.unit.life, event.unit.speed,
+                            event.unit.playerNumber));
                     return (Actor) event.unit.clone();
                 } catch (CloneNotSupportedException e) {
                     throw new NotRespawnable();

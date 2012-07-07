@@ -10,7 +10,7 @@ import com.badlogic.gdx.math.Vector2;
 import com.badlogic.gdx.math.Vector3;
 import com.badlogic.gdx.scenes.scene2d.Actor;
 
-class Platform extends Actor {
+class Platform extends Actor implements Callback {
     private Texture mEdgeTexture, mFloorTexture, mCellBg;
     private int playerNumber;
     private Building mBuilding = null;
@@ -18,7 +18,6 @@ class Platform extends Actor {
     private Vector2 buildVector = new Vector2();
     private Vector3 menuVector = new Vector3();
     private float mHighlightPhase;
-    private BuildingParams mBuildingParams;
     private Constructor<?> ctor;
 
     public Platform(float x, float y, int width, int height, int playerNumber) {
@@ -65,6 +64,7 @@ class Platform extends Actor {
             return true;
 
         if (TurnDefence.Selected != null) {
+            BuildingMenu.hideAll();
             if (!TurnDefence.Selected.isActive()) {
                 TurnDefence.Selected.sell(1.0f);
                 TurnDefence.Selected = null;
@@ -82,23 +82,21 @@ class Platform extends Actor {
                     (float) Math.floor(y / 64) * 64);
             buildVector.add(this.x, this.y);
             menuVector.set(buildVector.x, buildVector.y, 0);
-            getStage().getCamera().project(menuVector);
             TurnDefence.BuildMenu.show(menuVector.x, menuVector.y - 70, this);
             mBuildingProcess = true;
         } else
-            TurnDefence.BuildMenu.hide();
+            BuildingMenu.hideAll();
         return true;
     }
 
     public void stopBuilding() {
-        mBuildingProcess = false;
     }
 
-    public void build(int type) {
-        mBuildingParams = TurnDefence.BuildingParamsList.get(type);
-        if (TurnDefence.Score[TurnDefence.Turn] - TurnDefence.PlayerUpkeep >= mBuildingParams.mPrice) {
+    @Override
+    public void done(BuildingParams params) {
+        if (TurnDefence.Score[TurnDefence.Turn] - TurnDefence.PlayerUpkeep >= params.mPrice) {
             try {
-                ctor = mBuildingParams.mClass.getConstructor(float.class,
+                ctor = params.mClass.getConstructor(float.class,
                         float.class, int.class);
                 mBuilding = (Building) ctor.newInstance(buildVector.x,
                         buildVector.y, playerNumber);
@@ -119,5 +117,11 @@ class Platform extends Actor {
             }
         }
         mBuildingProcess = false;
+    }
+
+    @Override
+    public void cancel() {
+        mBuildingProcess = false;
+        
     }
 }

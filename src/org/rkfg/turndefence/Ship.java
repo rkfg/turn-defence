@@ -19,7 +19,7 @@ class Ship extends Unit {
             break;
         }
         init(mInitX, MoveMap.getYbyX(mInitX),
-                (TurnDefence.myRandom.nextFloat() * 50 + 100), 200, 250);
+                TurnDefence.myRandom.nextInt(50) + 100, 200, 250);
     }
 
     @Override

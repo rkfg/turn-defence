@@ -9,7 +9,7 @@ public class Meteor extends Unit {
         super(TurnDefence.myAssetManager.get("gfx/meteor_" + meteorType + ".png",
                 Texture.class), playerNumber);
         init(TurnDefence.BFWIDTH / 2, MoveMap.getYbyX(TurnDefence.BFWIDTH / 2),
-                TurnDefence.myRandom.nextFloat() * 30 + 100, life,
+                TurnDefence.myRandom.nextInt(30) + 100, life,
                 150 + 50 * (3 - meteorType));
     }
 

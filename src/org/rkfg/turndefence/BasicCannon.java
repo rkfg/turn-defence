@@ -3,6 +3,7 @@ package org.rkfg.turndefence;
 import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.badlogic.gdx.scenes.scene2d.Actor;
+import com.badlogic.gdx.utils.Array;
 
 class BasicCannon extends Building {
     private float reload;
@@ -13,7 +14,7 @@ class BasicCannon extends Building {
     private float mRangeScale;
 
     public BasicCannon(float x, float y, int playerNumber) {
-        super(playerNumber);
+        super(playerNumber, new Array<BuildingParams>());
         init(x, y);
     }
 
