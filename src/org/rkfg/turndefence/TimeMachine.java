@@ -9,17 +9,15 @@ import com.badlogic.gdx.utils.Array;
 class TimeMachine { // time manager
     private static HashMap<Integer, Array<GameEvent>> Events = new HashMap<Integer, Array<GameEvent>>();
 
-    public static void storeEvent(int time, GameEvent event, boolean insert) {
-        if (!Events.containsKey(time))
-            Events.put(time, new Array<GameEvent>(10));
-        if (insert)
-            Events.get(time).insert(0, event);
-        else
-            Events.get(time).add(event);
-    }
-
     public static void storeEvent(int time, GameEvent event) {
-        storeEvent(time, event, false);
+        System.out.println("Storing event: " + event);
+        if (!Events.containsKey(time))
+            Events.put(time, new Array<GameEvent>());
+        Array<GameEvent> moment = Events.get(time);
+        if (event.eventType == EventType.TURN || moment.size == 0)
+            moment.add(event);
+        else
+            moment.insert(moment.size - 1, event);
     }
 
     public static Array<GameEvent> getEvents(int time) {

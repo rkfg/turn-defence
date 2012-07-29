@@ -79,14 +79,14 @@ public class Unit extends Actor implements Cloneable {
     @Override
     public void draw(SpriteBatch batch, float parentAlpha) {
         if (life > originLife / 2) {
-            batch.setColor((originLife - life) / originLife * 2, 1.0f, 0.0f,
+            batch.setColor((originLife - life) * 2.0f / originLife, 1.0f, 0.0f,
                     TurnDefence.Selected != null ? 0.1f : 1.0f);
         } else {
-            batch.setColor(1.0f, life / originLife * 2, 0.0f,
+            batch.setColor(1.0f, life * 2.0f / originLife, 0.0f,
                     TurnDefence.Selected != null ? 0.1f : 1.0f);
         }
-        batch.draw(TurnDefence.HealthTexture, x - width / 2,
-                y + height / 2 + 6, width * life / originLife, 4.0f);
+        batch.draw(TurnDefence.HealthTexture, x - width / 2.0f, y + height / 2
+                + 6, width * life / originLife, 4.0f);
         batch.setColor(Color.WHITE);
     }
 

@@ -25,4 +25,11 @@ public class GameEvent {
         this(eventType);
         this.unit = unit;
     }
+
+    @Override
+    public String toString() {
+        return String
+                .format("{eventType: %s, building: %s, unit: %s, number: %s, bound: %s}",
+                        eventType, building, unit, number, bound);
+    }
 }

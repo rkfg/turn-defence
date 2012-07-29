@@ -42,8 +42,6 @@ class Building extends Actor implements Cloneable, Callback {
     protected Object clone(boolean store) throws CloneNotSupportedException {
         if (!store) {
             mBuildingParams = getParamsByClass(this.getClass());
-            TurnDefence.changeScore(-mBuildingParams.mPrice);
-            TurnDefence.changeUpkeep(mBuildingParams.mUpkeep);
             for (Actor actor : TurnDefence.BuildingsGroup.getActors()) {
                 if (actor.x == this.x && actor.y == this.y) {
                     Gdx.app.log("Time conflict", "Object @ " + x + ":" + y
@@ -51,6 +49,8 @@ class Building extends Actor implements Cloneable, Callback {
                     return null;
                 }
             }
+            TurnDefence.changeScore(-mBuildingParams.mPrice);
+            TurnDefence.changeUpkeep(mBuildingParams.mUpkeep);
         }
         return super.clone();
     }
@@ -142,6 +142,8 @@ class Building extends Actor implements Cloneable, Callback {
         TurnDefence
                 .changeScore(sellPrice);
         TurnDefence.changeUpkeep(-getParamsByClass(this.getClass()).mUpkeep);
+        TurnDefence.Selected = null;
+        BuildingMenu.hideAll();
         return sellPrice;
     }
 

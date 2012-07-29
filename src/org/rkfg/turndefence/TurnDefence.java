@@ -139,9 +139,9 @@ public class TurnDefence implements ApplicationListener {
 
             @Override
             public void click(Actor actor, float x, float y) {
-                if (PlayTime < PresentPlayTime)
-                    timeTravel(PresentPlayTime);
                 if (TurnProcess == 0 && !GameOver) {
+                    if (PlayTime < PresentPlayTime)
+                        timeTravel(PresentPlayTime);
                     BuildingMenu.hideAll();
                     if (Selected != null && !Selected.isActive())
                         Selected.sell(1.0f);
@@ -151,7 +151,7 @@ public class TurnDefence implements ApplicationListener {
                     TurnProcess = 0;
                     TurnSwitchProcess = TURNSWITCH;
                     Turn = 1 - Turn;
-                    TimeMachine.storeEvent(PlayTime + 1, new GameEvent(
+                    TimeMachine.storeEvent(PlayTime, new GameEvent(
                             EventType.TURN, Turn));
                     mPlayerLabel.setText("Player " + (Turn + 1) + " turn");
                     changeScore(0);
@@ -199,6 +199,7 @@ public class TurnDefence implements ApplicationListener {
                                     // yet :[
             return;
 
+        int tempTurn = Turn;
         Gdx.app.debug("Travel", String.format("Going to time: %d", time));
         init();
         TurnProcess = 1;
@@ -211,6 +212,7 @@ public class TurnDefence implements ApplicationListener {
                     switch (event.eventType) {
                     case BUILD:
                         try {
+                            Gdx.app.log("Travel", "Score before: " + Score[Turn]);
                             Gdx.app.debug("Travel", String.format(
                                     "Creating the building @ %f, %f",
                                     event.building.x, event.building.y));
@@ -220,6 +222,7 @@ public class TurnDefence implements ApplicationListener {
                                 BuildingsGroup.addActor(replayBuilding);
                                 replayBuilding.mActive = true;
                             }
+                            Gdx.app.log("Travel", "Score now: " + Score[Turn]);
                         } catch (CloneNotSupportedException e) {
                             e.printStackTrace();
                         }
@@ -262,6 +265,7 @@ public class TurnDefence implements ApplicationListener {
                             Runtime, TurnProcess, PlayTime, PresentPlayTime));
         }
         TurnProcess = 0;
+        Turn = tempTurn;
         changeScore(0);
         changeUpkeep(0);
     }
