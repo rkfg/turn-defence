@@ -29,68 +29,6 @@ public class Unit extends Actor implements Cloneable {
     }
 
     @Override
-    protected Object clone() throws CloneNotSupportedException {
-        Unit clonedUnit = (Unit) super.clone();
-        clonedUnit.deltaXY = new Vector2();
-        clonedUnit.nextXY = new Vector2();
-        clonedUnit.dist = new Vector2();
-        return clonedUnit;
-    }
-
-    protected void init(float x, float y, int speed, int life, int reward) {
-        this.x = x;
-        this.y = y;
-        this.originY = y;
-        this.totalDistance = 0.0f;
-        this.speed = speed;
-        this.life = life;
-        this.originLife = life;
-        this.mReward = reward;
-        this.deltaXY = new Vector2();
-        this.nextXY = new Vector2();
-        this.dist = new Vector2();
-        try {
-            Gdx.app.debug(
-                    "Unit init",
-                    String.format(
-                            "life: %d, speed: %d, playerNumber: %d, playtime: %s, classname: %s",
-                            life, speed, playerNumber, TurnDefence.PlayTime,
-                            getClass().getSimpleName()));
-            TimeMachine.storeEvent(TurnDefence.PlayTime, new GameEvent(
-                    EventType.SPAWN, (Unit) this.clone()));
-        } catch (CloneNotSupportedException e) {
-            e.printStackTrace();
-        }
-        nextPath();
-    }
-
-    protected void nextPath() {
-        nextXY = MoveMap.getNextXY(this.x, this.y, playerNumber == 0);
-        this.deltaXY.set((nextXY.x - x), (nextXY.y - y));
-        this.dist.set(deltaXY);
-        this.deltaXY.nor();
-    }
-
-    protected void preDraw(SpriteBatch batch) {
-        mColor.a = TurnDefence.Selected != null ? 0.1f : 1.0f;
-        batch.setColor(mColor);
-    }
-
-    @Override
-    public void draw(SpriteBatch batch, float parentAlpha) {
-        if (life > originLife / 2) {
-            batch.setColor((originLife - life) * 2.0f / originLife, 1.0f, 0.0f,
-                    TurnDefence.Selected != null ? 0.1f : 1.0f);
-        } else {
-            batch.setColor(1.0f, life * 2.0f / originLife, 0.0f,
-                    TurnDefence.Selected != null ? 0.1f : 1.0f);
-        }
-        batch.draw(TurnDefence.HealthTexture, x - width / 2.0f, y + height / 2
-                + 6, width * life / originLife, 4.0f);
-        batch.setColor(Color.WHITE);
-    }
-
-    @Override
     public void act(float delta) {
         // Acts at enemy's turn
         super.act(delta);
@@ -127,14 +65,39 @@ public class Unit extends Actor implements Cloneable {
         }
     }
 
+    @Override
+    protected Object clone() throws CloneNotSupportedException {
+        Unit clonedUnit = (Unit) super.clone();
+        clonedUnit.deltaXY = new Vector2();
+        clonedUnit.nextXY = new Vector2();
+        clonedUnit.dist = new Vector2();
+        return clonedUnit;
+    }
+
     public void doDamage(int damage) {
         life -= damage;
         // mInvulnerable += 0.1f;
-        getStage().addActor(new Explosion(x - width / 2, y - height / 2, 1));
+        if (TurnDefence.PlayTime == TurnDefence.PresentPlayTime)
+            getStage().addActor(new Explosion(x - width / 2, y - height / 2, 1));
+        
         if (life <= 0) {
             TurnDefence.changeScore(mReward);
             remove();
         }
+    }
+
+    @Override
+    public void draw(SpriteBatch batch, float parentAlpha) {
+        if (life > originLife / 2) {
+            batch.setColor((originLife - life) * 2.0f / originLife, 1.0f, 0.0f,
+                    TurnDefence.Selected != null ? 0.1f : 1.0f);
+        } else {
+            batch.setColor(1.0f, life * 2.0f / originLife, 0.0f,
+                    TurnDefence.Selected != null ? 0.1f : 1.0f);
+        }
+        batch.draw(TurnDefence.HealthTexture, x - width / 2.0f, y + height / 2
+                + 6, width * life / originLife, 4.0f);
+        batch.setColor(Color.WHITE);
     }
 
     public float getTotalDistance() {
@@ -146,7 +109,46 @@ public class Unit extends Actor implements Cloneable {
         return x > 0 && x < width && y > 0 && y < height ? this : null;
     }
 
+    protected void init(float x, float y, int speed, int life, int reward) {
+        this.x = x;
+        this.y = y;
+        this.originY = y;
+        this.totalDistance = 0.0f;
+        this.speed = speed;
+        this.life = life;
+        this.originLife = life;
+        this.mReward = reward;
+        this.deltaXY = new Vector2();
+        this.nextXY = new Vector2();
+        this.dist = new Vector2();
+        try {
+            Gdx.app.debug(
+                    "Unit init",
+                    String.format(
+                            "life: %d, speed: %d, playerNumber: %d, playtime: %s, classname: %s",
+                            life, speed, playerNumber, TurnDefence.PlayTime,
+                            getClass().getSimpleName()));
+            TimeMachine.storeEvent(TurnDefence.PlayTime, new GameEvent(
+                    EventType.SPAWN, (Unit) this.clone()));
+        } catch (CloneNotSupportedException e) {
+            e.printStackTrace();
+        }
+        nextPath();
+    }
+
     public boolean isEnemyFor(int player) {
         return this.playerNumber != player;
+    }
+
+    protected void nextPath() {
+        nextXY = MoveMap.getNextXY(this.x, this.y, playerNumber == 0);
+        this.deltaXY.set((nextXY.x - x), (nextXY.y - y));
+        this.dist.set(deltaXY);
+        this.deltaXY.nor();
+    }
+
+    protected void preDraw(SpriteBatch batch) {
+        mColor.a = TurnDefence.Selected != null ? 0.1f : 1.0f;
+        batch.setColor(mColor);
     }
 }

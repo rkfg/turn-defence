@@ -17,6 +17,12 @@ class BuildingMenu extends Actor {
     private Vector3 menuVector;
     static Array<BuildingMenu> visibleMenus = new Array<BuildingMenu>();
 
+    public static void hideAll() {
+        for (BuildingMenu menu : visibleMenus){
+            menu.hide();
+        }
+    }
+
     public BuildingMenu(Stage stage, Array<BuildingParams> buildingParams) {
         this.mStage = stage;
         mLocalBuildingParamsList = buildingParams;
@@ -27,35 +33,6 @@ class BuildingMenu extends Actor {
                 Texture.class);
     }
 
-    public void show(float x, float y, Callback callback) {
-        this.callback = callback;
-        menuVector.set(x, y, 0);
-        TurnDefence.Stage.getCamera().project(menuVector);
-        this.x = menuVector.x - this.width / 2 + 32;
-        this.y = menuVector.y;
-        if (this.x < 0.0f)
-            this.x = 0.0f;
-        if (this.x + this.width > Gdx.graphics.getWidth())
-            this.x = Gdx.graphics.getWidth() - this.width;
-        if (this.y < 0.0f)
-            this.y = 0;
-        visibleMenus.add(this);
-        this.mStage.addActor(this);
-    }
-
-    public void hide() {
-        if (this.callback != null)
-            this.callback.cancel();
-        visibleMenus.removeValue(this, true);
-        this.mStage.removeActor(this);
-    }
-
-    public static void hideAll() {
-        for (BuildingMenu menu : visibleMenus){
-            menu.hide();
-        }
-    }
-    
     @Override
     public void draw(SpriteBatch batch, float parentAlpha) {
         this.menuX = x;
@@ -84,9 +61,32 @@ class BuildingMenu extends Actor {
         }
     }
 
+    public void hide() {
+        if (this.callback != null)
+            this.callback.cancel();
+        visibleMenus.removeValue(this, true);
+        this.mStage.removeActor(this);
+    }
+    
     @Override
     public Actor hit(float x, float y) {
         return x > 0 && x < width && y > 0 && y < height ? this : null;
+    }
+
+    public void show(float x, float y, Callback callback) {
+        this.callback = callback;
+        menuVector.set(x, y, 0);
+        TurnDefence.Stage.getCamera().project(menuVector);
+        this.x = menuVector.x - this.width / 2 + 32;
+        this.y = menuVector.y;
+        if (this.x < 0.0f)
+            this.x = 0.0f;
+        if (this.x + this.width > Gdx.graphics.getWidth())
+            this.x = Gdx.graphics.getWidth() - this.width;
+        if (this.y < 0.0f)
+            this.y = 0;
+        visibleMenus.add(this);
+        this.mStage.addActor(this);
     }
 
     @Override

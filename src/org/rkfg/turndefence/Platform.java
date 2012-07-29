@@ -39,6 +39,39 @@ class Platform extends Actor implements Callback {
     }
 
     @Override
+    public void cancel() {
+        mBuildingProcess = false;
+        
+    }
+
+    @Override
+    public void done(BuildingParams params) {
+        if (TurnDefence.Score[TurnDefence.Turn] - TurnDefence.PlayerUpkeep >= params.mPrice) {
+            try {
+                ctor = params.mClass.getConstructor(float.class,
+                        float.class, int.class);
+                mBuilding = (Building) ctor.newInstance(buildVector.x,
+                        buildVector.y, playerNumber);
+                TurnDefence.BuildingsGroup.addActor(mBuilding);
+                TurnDefence.Selected = mBuilding;
+            } catch (SecurityException e) {
+                e.printStackTrace();
+            } catch (NoSuchMethodException e) {
+                e.printStackTrace();
+            } catch (IllegalArgumentException e) {
+                e.printStackTrace();
+            } catch (InstantiationException e) {
+                e.printStackTrace();
+            } catch (IllegalAccessException e) {
+                e.printStackTrace();
+            } catch (InvocationTargetException e) {
+                e.printStackTrace();
+            }
+        }
+        mBuildingProcess = false;
+    }
+
+    @Override
     public void draw(SpriteBatch batch, float parentAlpha) {
         batch.draw(mEdgeTexture, x, y - 64, width, 64.0f, 0, 1, width / 64, 0);
         batch.draw(mFloorTexture, x, y, width, height, 0, height / 64.0f,
@@ -56,6 +89,9 @@ class Platform extends Actor implements Callback {
     @Override
     public Actor hit(float x, float y) {
         return x > 0 && x < width && y > 0 && y < height ? this : null;
+    }
+
+    public void stopBuilding() {
     }
 
     @Override
@@ -87,41 +123,5 @@ class Platform extends Actor implements Callback {
         } else
             BuildingMenu.hideAll();
         return true;
-    }
-
-    public void stopBuilding() {
-    }
-
-    @Override
-    public void done(BuildingParams params) {
-        if (TurnDefence.Score[TurnDefence.Turn] - TurnDefence.PlayerUpkeep >= params.mPrice) {
-            try {
-                ctor = params.mClass.getConstructor(float.class,
-                        float.class, int.class);
-                mBuilding = (Building) ctor.newInstance(buildVector.x,
-                        buildVector.y, playerNumber);
-                TurnDefence.BuildingsGroup.addActor(mBuilding);
-                TurnDefence.Selected = mBuilding;
-            } catch (SecurityException e) {
-                e.printStackTrace();
-            } catch (NoSuchMethodException e) {
-                e.printStackTrace();
-            } catch (IllegalArgumentException e) {
-                e.printStackTrace();
-            } catch (InstantiationException e) {
-                e.printStackTrace();
-            } catch (IllegalAccessException e) {
-                e.printStackTrace();
-            } catch (InvocationTargetException e) {
-                e.printStackTrace();
-            }
-        }
-        mBuildingProcess = false;
-    }
-
-    @Override
-    public void cancel() {
-        mBuildingProcess = false;
-        
     }
 }

@@ -23,20 +23,20 @@ public class Explosion extends Actor {
     }
 
     @Override
+    public void act(float delta) {
+        super.act(delta);
+        lifetime -= delta;
+        if (lifetime < 0)
+            remove();
+    }
+
+    @Override
     public void draw(SpriteBatch batch, float parentAlpha) {
         batch.setColor(1.0f, 1.0f, 1.0f, lifetime / starttime);
         float size = ((starttime - lifetime) / starttime * 2 + 1);
         batch.draw(mExplosionTexture, x, y, 32.0f, 32.0f, width, height, size,
                 size, 0.0f, 0, 0, 64, 64, false, false);
         batch.setColor(Color.WHITE);
-    }
-
-    @Override
-    public void act(float delta) {
-        super.act(delta);
-        lifetime -= delta;
-        if (lifetime < 0)
-            remove();
     }
 
     @Override

@@ -65,12 +65,46 @@ public class TurnDefence implements ApplicationListener {
     private Pixmap mHealthPixmap;
     static Texture HealthTexture;
     static Array<BuildingParams> BuildingParamsList;
-    private List<String> mTextures = Arrays.asList("cannon2.png", "edge.png",
-            "explosion.png", "floor2.png", "ship_1.png", "meteor_1.png",
-            "meteor_2.png", "meteor_3.png", "stars_1.jpg", "button.png",
-            "beacon_1.png", "menuitembg.png", "smoke.png", "range_active.png",
-            "range_passive.png", "building_ph.png", "path.png", "recycle.png");
+    private List<String> mTextures = Arrays.asList("cannon_1.png",
+            "cannon_2.png", "edge.png", "explosion.png", "floor2.png",
+            "ship_1.png", "meteor_1.png", "meteor_2.png", "meteor_3.png",
+            "stars_1.jpg", "button.png", "beacon_1.png", "menuitembg.png",
+            "smoke.png", "range_active.png", "range_passive.png",
+            "building_ph.png", "path.png", "recycle.png");
     static BitmapFont PriceFont;
+
+    public static void changeScore(int delta) {
+        Score[Turn] += delta;
+        mScoreLabel.setText("Score: " + Score[Turn]);
+        if (Score[Turn] < 0) {
+            GameOver = true;
+            Label gameOverLabel = new Label("Game over. Player " + (2 - Turn)
+                    + " won.", MainSkin.getStyle("gameover", LabelStyle.class));
+            gameOverLabel.x = (screenWidth - gameOverLabel.width) / 2;
+            gameOverLabel.y = screenHeight / 2;
+            UI.addActor(gameOverLabel);
+        }
+    }
+
+    public static void changeUpkeep(int delta) {
+        PlayerUpkeep += delta;
+        mUpkeepLabel.setText("Upkeep: " + PlayerUpkeep);
+    }
+
+    public static void init() {
+        MeteorTime[0] = MeteorTime[1] = 0;
+        BuildingsGroup.clear();
+        UnitsGroup[0].clear();
+        UnitsGroup[1].clear();
+        Score[0] = Score[1] = 5000;
+        TurnProcess = 0;
+        TurnSwitchProcess = 0;
+        Turn = 0;
+        PlayTime = 0;
+        MeteorLife = 50;
+        SpawnDelay = 1 * PPS;
+        Selected = null;
+    }
 
     @Override
     public void create() {
@@ -114,8 +148,11 @@ public class TurnDefence implements ApplicationListener {
         PriceFont = MainSkin.getFont("dejavu");
         BuildingParamsList = new Array<BuildingParams>(true, 10);
         BuildingParamsList
-                .add(new BuildingParams(BasicCannon.class, myAssetManager.get(
-                        "gfx/cannon2.png", Texture.class), 1000, 50));
+                .add(new BuildingParams(HeavyCannon.class, myAssetManager.get(
+                        "gfx/cannon_1.png", Texture.class), 1000, 50));
+        BuildingParamsList
+                .add(new BuildingParams(MachineGun.class, myAssetManager.get(
+                        "gfx/cannon_2.png", Texture.class), 700, 70));
         BuildingParamsList.add(new BuildingParams(Beacon.class, myAssetManager
                 .get("gfx/beacon_1.png", Texture.class), 1500, 100));
 
@@ -141,7 +178,7 @@ public class TurnDefence implements ApplicationListener {
             public void click(Actor actor, float x, float y) {
                 if (TurnProcess == 0 && !GameOver) {
                     if (PlayTime < PresentPlayTime)
-                        timeTravel(PresentPlayTime);
+                        TimeMachine.timeTravel(PresentPlayTime);
                     BuildingMenu.hideAll();
                     if (Selected != null && !Selected.isActive())
                         Selected.sell(1.0f);
@@ -167,7 +204,7 @@ public class TurnDefence implements ApplicationListener {
             @Override
             public void click(Actor actor, float x, float y) {
                 if (TurnProcess == 0 && !GameOver && PlayTime > 6 * PPS)
-                    timeTravel(PlayTime - 6 * PPS);
+                    TimeMachine.timeTravel(PlayTime - 6 * PPS);
             }
         });
         UI.addActor(mBackInTime);
@@ -180,7 +217,7 @@ public class TurnDefence implements ApplicationListener {
             public void click(Actor actor, float x, float y) {
                 if (TurnProcess == 0 && !GameOver
                         && PlayTime <= PresentPlayTime - 6 * PPS)
-                    timeTravel(PlayTime + 6 * PPS);
+                    TimeMachine.timeTravel(PlayTime + 6 * PPS);
             }
         });
         UI.addActor(mForwardInTime);
@@ -194,85 +231,13 @@ public class TurnDefence implements ApplicationListener {
         MoveMap.initMoveMap("maps/map_1.txt");
     }
 
-    public void timeTravel(int time) {
-        if (time > PresentPlayTime) // travelling to the future isn't supported
-                                    // yet :[
-            return;
-
-        int tempTurn = Turn;
-        Gdx.app.debug("Travel", String.format("Going to time: %d", time));
-        init();
-        TurnProcess = 1;
-        Array<GameEvent> events;
-        while (PlayTime <= time) {
-            events = TimeMachine.getEvents(PlayTime);
-            if (events != null) { // something to replay
-                for (GameEvent event : events) {
-                    event.bound = false;
-                    switch (event.eventType) {
-                    case BUILD:
-                        try {
-                            Gdx.app.log("Travel", "Score before: " + Score[Turn]);
-                            Gdx.app.debug("Travel", String.format(
-                                    "Creating the building @ %f, %f",
-                                    event.building.x, event.building.y));
-                            Building replayBuilding = (Building) event.building
-                                    .clone(false);
-                            if (replayBuilding != null) {
-                                BuildingsGroup.addActor(replayBuilding);
-                                replayBuilding.mActive = true;
-                            }
-                            Gdx.app.log("Travel", "Score now: " + Score[Turn]);
-                        } catch (CloneNotSupportedException e) {
-                            e.printStackTrace();
-                        }
-                        break;
-                    case SELL:
-                        Gdx.app.debug("Travel", String.format(
-                                "Selling the building @ %f, %f for %d",
-                                event.building.x, event.building.y,
-                                event.number));
-                        for (Actor actor : BuildingsGroup.getActors()) {
-                            if (event.building.x == actor.x
-                                    && event.building.y == actor.y
-                                    && event.building.getClass() == actor
-                                            .getClass()) {
-                                Gdx.app.debug("Travel",
-                                        "Found the building to sell");
-                                Stage.removeActor(actor);
-                                changeScore(event.number);
-                                break;
-                            }
-                        }
-                        break;
-                    case TURN:
-                        Turn = event.number;
-                        PlayerUpkeep = 0;
-                        break;
-                    }
-                }
-            }
-            if (PlayTime < time) {
-                Stage.act(GAMESTEP);
-                PlayTime += 1;
-            } else {
-                break;
-            }
-            Gdx.app.debug(
-                    "Travel",
-                    String.format(
-                            "Runtime: %f, TurnProcess: %d, PlayTime: %d, PresentPlayTime: %d",
-                            Runtime, TurnProcess, PlayTime, PresentPlayTime));
-        }
-        TurnProcess = 0;
-        Turn = tempTurn;
-        changeScore(0);
-        changeUpkeep(0);
-    }
-
     @Override
     public void dispose() {
         Stage.dispose();
+    }
+
+    @Override
+    public void pause() {
     }
 
     @Override
@@ -303,21 +268,6 @@ public class TurnDefence implements ApplicationListener {
         UI.draw();
     }
 
-    public void init() {
-        MeteorTime[0] = MeteorTime[1] = 0;
-        BuildingsGroup.clear();
-        UnitsGroup[0].clear();
-        UnitsGroup[1].clear();
-        Score[0] = Score[1] = 5000;
-        TurnProcess = 0;
-        TurnSwitchProcess = 0;
-        Turn = 0;
-        PlayTime = 0;
-        MeteorLife = 50;
-        SpawnDelay = 1 * PPS;
-        Selected = null;
-    }
-
     @Override
     public void resize(int width, int height) {
         Stage.setViewport(width, height, true);
@@ -327,31 +277,9 @@ public class TurnDefence implements ApplicationListener {
     }
 
     @Override
-    public void pause() {
-    }
-
-    @Override
     public void resume() {
         HealthTexture.dispose();
         HealthTexture = new Texture(mHealthPixmap);
-    }
-
-    public static void changeScore(int delta) {
-        Score[Turn] += delta;
-        mScoreLabel.setText("Score: " + Score[Turn]);
-        if (Score[Turn] < 0) {
-            GameOver = true;
-            Label gameOverLabel = new Label("Game over. Player " + (2 - Turn)
-                    + " won.", MainSkin.getStyle("gameover", LabelStyle.class));
-            gameOverLabel.x = (screenWidth - gameOverLabel.width) / 2;
-            gameOverLabel.y = screenHeight / 2;
-            UI.addActor(gameOverLabel);
-        }
-    }
-
-    public static void changeUpkeep(int delta) {
-        PlayerUpkeep += delta;
-        mUpkeepLabel.setText("Upkeep: " + PlayerUpkeep);
     }
 
 }

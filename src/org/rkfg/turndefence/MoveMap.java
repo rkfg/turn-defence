@@ -20,29 +20,47 @@ class MoveMap {
     private static Texture mPathTexture;
     private static Array<Vector2> mPathPoints;
 
-    public static void initMoveMap(String mapname) {
-        mPathPoints = new Array<Vector2>(100);
-        FileHandle mFileHandle = Gdx.files.internal(mapname);
-        String mString = mFileHandle.readString();
-        String mLines[] = mString.split("\n");
-        mInternalMap = new Vector2[mLines.length][];
-        cnt = 0;
-        for (String line : mLines) {
-            mXYString = line.split(" ");
-            x = Integer.parseInt(mXYString[0]);
-            y = Integer.parseInt(mXYString[1]);
-            x2 = Integer.parseInt(mXYString[2]);
-            y2 = Integer.parseInt(mXYString[3]);
-            mInternalMap[cnt] = new Vector2[] { new Vector2(x, y),
-                    new Vector2(x2, y2) };
-            cnt++;
+    public static void draw(SpriteBatch batch, int playerNumber) {
+        if (mPathPoints.size == 0) {
+            for (Vector2[] pathElement : mInternalMap) {
+                mCurElem.set(pathElement[1]).sub(pathElement[0]);
+                mNormalizedElem.set(mCurElem).nor().mul(TurnDefence.STEP);
+                mElemLen = mCurElem.len();
+                mCurElem.set(pathElement[0]);
+                mCurElemMeasure.set(0.0f, 0.0f);
+                while (mCurElemMeasure.len() + TurnDefence.STEP <= mElemLen) {
+                    drawPoint(batch, playerNumber, mCurElem);
+                    mPathPoints.add(mCurElem.cpy());
+                    mCurElem.add(mNormalizedElem);
+                    mCurElemMeasure.add(mNormalizedElem);
+                }
+            }
+        } else {
+            for (Vector2 pathElement : mPathPoints) {
+                drawPoint(batch, playerNumber, pathElement);
+            }
         }
-        mNextResult = new Array<Vector2>(5); // path forks
-        mYbyXResult = new Array<Float>(5);
-        mNormalizedElem = new Vector2();
-        mCurElem = new Vector2();
-        mCurElemMeasure = new Vector2();
-        mPathTexture = TurnDefence.myAssetManager.get("gfx/path.png", Texture.class);
+        batch.setColor(1.0f, 1.0f, 1.0f, 1.0f);
+    }
+
+    public static void drawPoint(SpriteBatch batch, int playerNumber, Vector2 curElem) {
+        mPathAlpha = Math.abs(curElem.x - TurnDefence.Runtime * TurnDefence.SCANLINEPERIOD
+                / TurnDefence.SCANLINESLOWNESS % TurnDefence.SCANLINEPERIOD / TurnDefence.SCANLINEPERIOD
+                * TurnDefence.BFWIDTH / 2);
+        if (mPathAlpha > 100)
+            mPathAlpha = 0.5f;
+        else
+            mPathAlpha = (100.0f - mPathAlpha) / 200.0f + 0.5f;
+        if (playerNumber == 0) {
+            batch.setColor(0.6f, 1.0f, 0.6f, mPathAlpha);
+            batch.draw(mPathTexture, curElem.x - mPathTexture.getWidth() / 2,
+                    curElem.y - mPathTexture.getHeight() / 2);
+        } else {
+            batch.setColor(1.0f, 0.6f, 0.6f, mPathAlpha);
+            batch.draw(mPathTexture, TurnDefence.BFWIDTH - curElem.x
+                    - mPathTexture.getWidth() / 2,
+                    curElem.y - mPathTexture.getHeight() / 2);
+        }
     }
 
     public static Vector2 getNextXY(float curX, float curY, boolean toRight) {
@@ -87,46 +105,28 @@ class MoveMap {
         return mYbyXResult.random();
     }
 
-    public static void drawPoint(SpriteBatch batch, int playerNumber, Vector2 curElem) {
-        mPathAlpha = Math.abs(curElem.x - TurnDefence.Runtime * TurnDefence.SCANLINEPERIOD
-                / TurnDefence.SCANLINESLOWNESS % TurnDefence.SCANLINEPERIOD / TurnDefence.SCANLINEPERIOD
-                * TurnDefence.BFWIDTH / 2);
-        if (mPathAlpha > 100)
-            mPathAlpha = 0.5f;
-        else
-            mPathAlpha = (100.0f - mPathAlpha) / 200.0f + 0.5f;
-        if (playerNumber == 0) {
-            batch.setColor(0.6f, 1.0f, 0.6f, mPathAlpha);
-            batch.draw(mPathTexture, curElem.x - mPathTexture.getWidth() / 2,
-                    curElem.y - mPathTexture.getHeight() / 2);
-        } else {
-            batch.setColor(1.0f, 0.6f, 0.6f, mPathAlpha);
-            batch.draw(mPathTexture, TurnDefence.BFWIDTH - curElem.x
-                    - mPathTexture.getWidth() / 2,
-                    curElem.y - mPathTexture.getHeight() / 2);
+    public static void initMoveMap(String mapname) {
+        mPathPoints = new Array<Vector2>(100);
+        FileHandle mFileHandle = Gdx.files.internal(mapname);
+        String mString = mFileHandle.readString();
+        String mLines[] = mString.split("\n");
+        mInternalMap = new Vector2[mLines.length][];
+        cnt = 0;
+        for (String line : mLines) {
+            mXYString = line.split(" ");
+            x = Integer.parseInt(mXYString[0]);
+            y = Integer.parseInt(mXYString[1]);
+            x2 = Integer.parseInt(mXYString[2]);
+            y2 = Integer.parseInt(mXYString[3]);
+            mInternalMap[cnt] = new Vector2[] { new Vector2(x, y),
+                    new Vector2(x2, y2) };
+            cnt++;
         }
-    }
-
-    public static void draw(SpriteBatch batch, int playerNumber) {
-        if (mPathPoints.size == 0) {
-            for (Vector2[] pathElement : mInternalMap) {
-                mCurElem.set(pathElement[1]).sub(pathElement[0]);
-                mNormalizedElem.set(mCurElem).nor().mul(TurnDefence.STEP);
-                mElemLen = mCurElem.len();
-                mCurElem.set(pathElement[0]);
-                mCurElemMeasure.set(0.0f, 0.0f);
-                while (mCurElemMeasure.len() + TurnDefence.STEP <= mElemLen) {
-                    drawPoint(batch, playerNumber, mCurElem);
-                    mPathPoints.add(mCurElem.cpy());
-                    mCurElem.add(mNormalizedElem);
-                    mCurElemMeasure.add(mNormalizedElem);
-                }
-            }
-        } else {
-            for (Vector2 pathElement : mPathPoints) {
-                drawPoint(batch, playerNumber, pathElement);
-            }
-        }
-        batch.setColor(1.0f, 1.0f, 1.0f, 1.0f);
+        mNextResult = new Array<Vector2>(5); // path forks
+        mYbyXResult = new Array<Float>(5);
+        mNormalizedElem = new Vector2();
+        mCurElem = new Vector2();
+        mCurElemMeasure = new Vector2();
+        mPathTexture = TurnDefence.myAssetManager.get("gfx/path.png", Texture.class);
     }
 }

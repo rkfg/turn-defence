@@ -11,14 +11,14 @@ public class GameEvent {
         this.eventType = eventType;
     }
 
-    GameEvent(EventType eventType, int number) {
-        this(eventType);
-        this.number = number;
-    }
-
     public GameEvent(EventType eventType, Building building) {
         this(eventType);
         this.building = building;
+    }
+
+    GameEvent(EventType eventType, int number) {
+        this(eventType);
+        this.number = number;
     }
 
     public GameEvent(EventType eventType, Unit unit) {

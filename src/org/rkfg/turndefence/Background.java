@@ -33,26 +33,6 @@ public class Background extends Actor {
     }
 
     @Override
-    public void draw(SpriteBatch batch, float parentAlpha) {
-        batch.draw(mBackgroundTexture, x, y, width, height);
-        for (Vector3 particle : mSmokeParticles) {
-            if (particle != null) {
-                batch.setColor(1.0f, 1.0f, 1.0f, particle.z);
-                batch.draw(mSmokeTexture, particle.x, particle.y, 32.0f, 32.0f,
-                        64.0f, 64.0f, 2.0f - particle.z, 2.0f - particle.z,
-                        particle.z * 180 + particle.y, 0, 0, 64, 64, false,
-                        false);
-                batch.setColor(1.0f, 1.0f, 1.0f, 1.0f);
-            }
-        }
-    }
-
-    @Override
-    public Actor hit(float x, float y) {
-        return x > 0 && x < width && y > 0 && y < height ? this : null;
-    }
-
-    @Override
     public void act(float delta) {
         super.act(delta);
         for (i = 0; i < (int) TurnDefence.BFHEIGHT / 30; i++) {
@@ -167,6 +147,26 @@ public class Background extends Actor {
             }
         }
 
+    }
+
+    @Override
+    public void draw(SpriteBatch batch, float parentAlpha) {
+        batch.draw(mBackgroundTexture, x, y, width, height);
+        for (Vector3 particle : mSmokeParticles) {
+            if (particle != null) {
+                batch.setColor(1.0f, 1.0f, 1.0f, particle.z);
+                batch.draw(mSmokeTexture, particle.x, particle.y, 32.0f, 32.0f,
+                        64.0f, 64.0f, 2.0f - particle.z, 2.0f - particle.z,
+                        particle.z * 180 + particle.y, 0, 0, 64, 64, false,
+                        false);
+                batch.setColor(1.0f, 1.0f, 1.0f, 1.0f);
+            }
+        }
+    }
+
+    @Override
+    public Actor hit(float x, float y) {
+        return x > 0 && x < width && y > 0 && y < height ? this : null;
     }
 
     @Override

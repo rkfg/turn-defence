@@ -10,12 +10,51 @@ class BasicCannon extends Building {
     private Actor damagedActor;
     private double distance;
     private float prevDist;
-    public static final float range = 100.0f;
+    private float range, reloadDelay;
+    private int damage;
     private float mRangeScale;
 
-    public BasicCannon(float x, float y, int playerNumber) {
+    public BasicCannon(float x, float y, int playerNumber, float range, float reloadDelay, int damage) {
         super(playerNumber, new Array<BuildingParams>());
+        this.range = range;
+        this.reloadDelay = reloadDelay;
+        this.damage = damage;
         init(x, y);
+    }
+
+    @Override
+    public void act(float delta) {
+        if (!mActive)
+            return;
+
+        super.act(delta);
+        if (TurnDefence.GameOver || TurnDefence.TurnProcess == 0 || playerNumber != TurnDefence.Turn)
+            return;
+
+        reload -= delta;
+        if (reload < 0.0f)
+            reload = 0.0f;
+
+        if (reload == 0.0f) {
+            prevDist = 0.0f;
+            damagedActor = null;
+            for (Actor actor : TurnDefence.UnitsGroup[1 - TurnDefence.Turn].getActors()) {
+                if (((Unit) actor).isEnemyFor(playerNumber)) {
+                    distance = Math.sqrt((x + width / 2 - actor.x)
+                            * (x + width / 2 - actor.x)
+                            + (y + height / 2 - actor.y)
+                            * (y + height / 2 - actor.y));
+                    if (distance < range
+                            && ((Unit) actor).getTotalDistance() > prevDist) {
+                        prevDist = ((Unit) actor).getTotalDistance();
+                        damagedActor = actor;
+                        reload = reloadDelay;
+                    }
+                }
+            }
+            if (damagedActor != null)
+                ((Unit) damagedActor).doDamage(damage);
+        }
     }
 
     @Override
@@ -52,40 +91,5 @@ class BasicCannon extends Building {
         batch.setColor(Color.WHITE);
         // mMainSkin.getFont("dejavu").draw(batch, String.valueOf(x) + ", "
         // + String.valueOf(y), x + 32.0f, y + 32.0f);
-    }
-
-    @Override
-    public void act(float delta) {
-        if (!mActive)
-            return;
-
-        super.act(delta);
-        if (TurnDefence.GameOver || TurnDefence.TurnProcess == 0 || playerNumber != TurnDefence.Turn)
-            return;
-
-        reload -= delta;
-        if (reload < 0.0f)
-            reload = 0.0f;
-
-        if (reload == 0.0f) {
-            prevDist = 0.0f;
-            damagedActor = null;
-            for (Actor actor : TurnDefence.UnitsGroup[1 - TurnDefence.Turn].getActors()) {
-                if (((Unit) actor).isEnemyFor(playerNumber)) {
-                    distance = Math.sqrt((x + width / 2 - actor.x)
-                            * (x + width / 2 - actor.x)
-                            + (y + height / 2 - actor.y)
-                            * (y + height / 2 - actor.y));
-                    if (distance < range
-                            && ((Unit) actor).getTotalDistance() > prevDist) {
-                        prevDist = ((Unit) actor).getTotalDistance();
-                        damagedActor = actor;
-                        reload = 1.0f;
-                    }
-                }
-            }
-            if (damagedActor != null)
-                ((Unit) damagedActor).doDamage(30);
-        }
     }
 }
